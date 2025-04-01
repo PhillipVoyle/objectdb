@@ -18,6 +18,7 @@ class flat_file
 {
 public:
     virtual filesize_t get_blocksize() = 0;
+    virtual filesize_t get_file_size() = 0;
     virtual int read_block(filesize_t block_nr, bytevec_t& block) = 0;
     virtual int write_block(filesize_t block_nr, const bytevec_t& block) = 0;
     virtual ~flat_file() = default;
@@ -37,6 +38,7 @@ public:
     ~std_flat_file() final = default;
 
     filesize_t get_blocksize() final;
+    filesize_t get_file_size() final;
 
     int read_block(filesize_t block_nr, bytevec_t& block) final;
 

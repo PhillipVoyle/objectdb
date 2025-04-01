@@ -30,6 +30,11 @@ filesize_t std_flat_file::get_blocksize()
     return _block_size;
 }
 
+filesize_t std_flat_file::get_file_size()
+{
+    return _file_size;
+}
+
 int std_flat_file::read_block(filesize_t block_nr, bytevec_t& block)
 {
     invariant();
