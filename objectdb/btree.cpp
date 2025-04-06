@@ -11,6 +11,14 @@ class btree
     int _value_size;
     int _offset_size = 8;
 
+    struct btree_seek_result
+    {
+        filesize_t block_id;
+        int position;
+        bool found;
+        bool needs_split;
+    };
+
     class btree_node
     {
         const int preamble_size = 4;
@@ -183,8 +191,7 @@ class btree
 
     static int calculate_max_keys(int block_size, int key_size, int value_size)
     {
-        int max_keys = (block_size - 4) / (key_size + value_size);
-        return max_keys;
+        return (block_size - 4) / (key_size + value_size);
     }
 
     static int calculate_degree(int block_size, int key_size, int value_size)
@@ -198,12 +205,21 @@ class btree
         return (max_keys + 1) / 2;
     }
 
+public:
+    btree(flat_file& storage, int key_size, int value_size) : _file(storage)
+    {
+        _key_size = key_size;
+        _value_size = value_size;
+        _block_size = storage.get_blocksize();
+        _degree = calculate_degree(_block_size, _key_size, _value_size);
+    }
+
     filesize_t get_root_block()
     {
         return _file.get_file_size() / _block_size - 1;
     }
 
-    filesize_t find_leaf_node(const std::vector<uint8_t>& key)
+    btree_seek_result find_leaf_node(const std::vector<uint8_t>& key)
     {
         filesize_t block = get_root_block();
         btree_node node(this);
@@ -216,83 +232,39 @@ class btree
             node.read(block, _file);
         }
 
-        return block;
-    }
+        bool is_update;
+        int pos = node.find_insert_position(key, is_update);
+        bool needs_split = (node.get_key_count() >= (2 * _degree - 1));
 
-public:
-
-    class btree_seek_result
-    {
-    public:
-        filesize_t block_id;
-        int position;
-        bool exists;
-        bool insert_requires_split;
-    };
-
-    btree(flat_file& storage, int key_size, int value_size) : _file(storage)
-    {
-        _key_size = key_size;
-        _value_size = value_size;
+        return { block, pos, is_update, needs_split };
     }
 
     void insert_new_key(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value)
     {
-        filesize_t leaf_block = find_leaf_node(key);
+        btree_seek_result seek_result = find_leaf_node(key);
+        insert_new_key_at_block(seek_result, key, value);
+    }
+
+    void insert_new_key_at_block(const btree_seek_result& seek_result, const std::vector<uint8_t>& key, const std::vector<uint8_t>& value)
+    {
         btree_node node(this);
-        node.read(leaf_block, _file);
-
-        bool is_update;
-        int insert_pos = node.find_insert_position(key, is_update);
-        if (is_update) {
-            throw std::runtime_error("Key already exists");
-        }
-
+        node.read(seek_result.block_id, _file);
+        
         int key_count = node.get_key_count();
-        if (key_count >= (2 * _degree - 1)) {
+        if (seek_result.needs_split) {
             btree_node new_sibling(this);
             std::vector<uint8_t> mid_key;
             node.split(new_sibling, mid_key);
 
             filesize_t new_block = _file.get_file_size() / _block_size;
             new_sibling.write(new_block, _file);
-            node.write(leaf_block, _file);
-
+            node.write(seek_result.block_id, _file);
+            
             insert_new_key(key, value);
-        }
-        else {
-            int use_value_size = _value_size;
-            int use_entry_size = _key_size + use_value_size;
-
-            auto insert_it = node.data.begin() + 4 + (insert_pos * use_entry_size);
-            node.data.insert(insert_it, key.begin(), key.end());
-            node.data.insert(insert_it + _key_size, value.begin(), value.end());
-
+        } else {
+            // Insert key and value at determined position
             node.set_key_count(key_count + 1);
-            node.write(leaf_block, _file);
-        }
-    }
-
-
-    void update_existing_key(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value)
-    {
-        // TODO: Implement updating an existing key's value in the leaf node
-    }
-
-    std::vector<uint8_t> find_value_for_key(const std::vector<uint8_t>& key)
-    {
-        // TODO: Implement searching for a key and returning its associated value
-        return {};
-    }
-
-    void upsert(const std::vector<uint8_t>& key, const std::vector<uint8_t>& value)
-    {
-        if (find_value_for_key(key).empty()) {
-            insert_new_key(key, value);
-        }
-        else {
-            update_existing_key(key, value);
+            node.write(seek_result.block_id, _file);
         }
     }
 };
-
