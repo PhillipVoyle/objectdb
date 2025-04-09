@@ -129,9 +129,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="btree.cpp" />
     <ClCompile Include="objectdb.cpp" />
-    <ClCompile Include="transaction_log.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\classes\classes.vcxproj">

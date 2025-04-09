@@ -141,11 +141,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\objectdb\flat_file.hpp" />
-    <ClInclude Include="framework.h" />
+    <ClInclude Include="..\include\*.hpp" />
+    <ClInclude Include="..\include\*.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\objectdb\flat_file.cpp" />
+    <ClCompile Include="..\src\*.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
