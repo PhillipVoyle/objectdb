@@ -63,11 +63,24 @@ private:
     int key_size = 0;
     int value_size = 0;
 
+    int get_maximum_value_count() const { return 256; } // hard code for now
+
     bool internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location);
+
+    bool insert_recursive(
+        filesize_t node_offset,
+        const std::span<uint8_t>& key,
+        const std::span<uint8_t>& data,
+        variable_btree_node& parent_node,
+        bool& root_split);
+
+    bool split_node(variable_btree_node& node, variable_btree_node& parent_node, bool& root_split);
 
 public:
     logging_btree(random_access_file& file);
-    bool create_empty_root_node(filesize_t offset, filesize_t& root_offset);
+    bool create_empty_root_node(filesize_t offset, filesize_t& node_size);
 
     bool find_key(int root_offset, const std::span<uint8_t>& key, value_location& location);
+    bool insert_key_and_data(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
+    bool update_data_at_key(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
 };

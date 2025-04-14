@@ -74,7 +74,7 @@ bool read_uint8(random_access_file& f, filesize_t offset, uint8_t& data)
         return false;
     }
 
-    uint64_t result = 0;
+    uint8_t result = 0;
     auto it = vec.begin();
 
     result = *it;
@@ -85,8 +85,7 @@ bool read_uint8(random_access_file& f, filesize_t offset, uint8_t& data)
 
 bool read_int32(random_access_file& f, filesize_t offset, int32_t& data)
 {
-    uint32_t stg = 0;
-    if (read_uint32(f, offset, stg))
+    if (uint32_t stg = 0; read_uint32(f, offset, stg))
     {
         data = stg;
         return true;
@@ -96,8 +95,7 @@ bool read_int32(random_access_file& f, filesize_t offset, int32_t& data)
 
 bool read_int64(random_access_file& f, filesize_t offset, int64_t& data)
 {
-    uint64_t stg = 0;
-    if (read_uint64(f, offset, stg))
+    if (uint64_t stg = 0; read_uint64(f, offset, stg))
     {
         data = stg;
         return true;
@@ -107,8 +105,7 @@ bool read_int64(random_access_file& f, filesize_t offset, int64_t& data)
 
 bool read_int8(random_access_file& f, filesize_t offset, int8_t& data)
 {
-    uint8_t stg = 0;
-    if (read_uint8(f, offset, stg))
+    if (uint8_t stg = 0; read_uint8(f, offset, stg))
     {
         data = stg;
         return true;
@@ -118,8 +115,7 @@ bool read_int8(random_access_file& f, filesize_t offset, int8_t& data)
 
 bool read_char(random_access_file& f, filesize_t offset, char& data)
 {
-    uint8_t stg = 0;
-    if (read_uint8(f, offset, stg))
+    if (uint8_t stg = 0; read_uint8(f, offset, stg))
     {
         data = stg;
         return true;
