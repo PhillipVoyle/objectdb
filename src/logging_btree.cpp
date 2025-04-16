@@ -222,7 +222,7 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
             auto it = value_at_position.begin();
 
             filesize_t next_offset = 0;
-            if (!read_filesize(value_at_position, 0, next_offset))
+            if (!read_filesize(value_at_position, next_offset))
             {
                 return 0;
             }
@@ -234,8 +234,13 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
     return true;
 }
 
-logging_btree::logging_btree(random_access_file& file) : _file(file)
+logging_btree::logging_btree(const logging_btree_parameters& parms) :
+    _file(parms.file),
+    key_size(parms.key_size),
+    value_size(parms.value_size),
+    maximum_value_count(parms.maximum_value_count)
 {
+    assert(key_size > 0 && value_size > 0);
 }
 
 /// <summary>
@@ -246,7 +251,7 @@ bool logging_btree::create_empty_root_node(filesize_t offset, filesize_t& node_s
     variable_btree_node node(*this);
     node._is_leaf = true;
     node._key_size = key_size;
-    node._value_size = sizeof(filesize_t);
+    node._value_size = value_size;
     node._data.resize(0);
     node._data.shrink_to_fit();
     if (!node.write_node(offset))
@@ -268,119 +273,206 @@ bool logging_btree::find_key(int root_offset, const std::span<uint8_t>& key, val
     return internal_find_key(node, key, location);
 }
 
-bool logging_btree::insert_key_and_data(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data)
+bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset)
 {
-    if (location.best_value_position.empty()) return false;
-
     // Start recursive insert
     bool root_split = false;
-    variable_btree_node new_root(*this);
-    if (insert_recursive(location.best_value_position.back().node_offset, key, data, new_root, root_split))
+    std::vector<uint8_t> new_node_key;
+    filesize_t new_node_offset = 0;
+    std::vector<uint8_t> current_node_key_bytes(key_size);
+    filesize_t current_node_offset = 0;
+    new_root_offset = root_offset;
+
+    if (!insert_recursive(root_offset, key, data, root_split, new_node_key, new_node_offset,current_node_key_bytes, current_node_offset))
     {
-        if (root_split)
-        {
-            filesize_t new_root_offset = _file.get_file_size();
-            new_root._is_leaf = false;
-            new_root.write_node(new_root_offset);
-        }
-        return true;
+        return false;
     }
-    return false;
+
+    // If the root was split, we need to create a new root node
+    if (root_split)
+    {
+        variable_btree_node new_root(*this);
+        new_root_offset = _file.get_file_size();
+        new_root._is_leaf = false;
+        new_root._key_size = key_size;
+        new_root._value_size = sizeof(filesize_t);
+        new_root._data.resize(0);
+
+        std::vector<uint8_t> current_offset_bytes(sizeof(filesize_t));
+        std::span<uint8_t> current_offset_span(current_offset_bytes);
+        write_filesize(current_offset_span, new_node_offset);
+
+        std::vector<uint8_t> new_offset_bytes(new_node_key.size());
+        std::span<uint8_t> new_offset_span{ new_offset_bytes };
+        write_filesize(new_offset_span, new_node_offset);
+
+        std::span<const uint8_t> current_node_key{ current_node_key_bytes };
+        new_root._data.insert(new_root._data.end(), current_node_key.begin(), current_node_key.end());
+        new_root._data.insert(new_root._data.end(), current_offset_bytes.begin(), current_offset_bytes.end());
+
+        new_root._data.insert(new_root._data.end(), new_node_key.begin(), new_node_key.end());
+        new_root._data.insert(new_root._data.end(), new_offset_span.begin(), new_offset_span.end());
+
+        new_root._data.shrink_to_fit();
+
+        // Write the new root node to the file
+        if (!new_root.write_node(new_root_offset))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
-bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, variable_btree_node& parent_node, bool& root_split)
+bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset)
 {
+    node_is_split = false;
     variable_btree_node current_node(*this);
     if (!current_node.read_node(node_offset)) return false;
+    current_node_offset = node_offset;
 
-    // Handle internal or leaf nodes
     int count = current_node.get_value_count();
+
     bool is_leaf = current_node._is_leaf;
 
-    // If the node is a leaf, insert directly
+    // find the insert position
+    int insert_pos = 0;
+    while (insert_pos < count && compare_span(key, { current_node._data.data() + insert_pos * current_node._key_size, current_node._key_size }) > 0)
+    {
+        insert_pos++;
+    }
+
+    std::vector<uint8_t> insert_value; // placeholder. Used only if this is a branch node
+    std::span<uint8_t> insert_value_span;
+
+    bool insert_required = false;
+    bool split_required = false;
+
     if (is_leaf)
     {
-        // Copy node and insert the key/data
-        std::vector<uint8_t> new_entry(current_node.get_entry_size());
-        std::memcpy(new_entry.data(), key.data(), key.size());
-        std::memcpy(new_entry.data() + key.size(), data.data(), data.size());
-
-        std::copy(new_entry.begin(), new_entry.end(), std::back_inserter<std::vector<uint8_t>>(current_node._data));
-
-        // If it exceeds the max allowed entries, split
-        if (current_node.get_value_count() > get_maximum_value_count())
-        {
-            return split_node(current_node, parent_node, root_split);
-        }
-        else {
-            return current_node.write_node(node_offset);
-        }
+        // if this is a leaf, yes an insert is required
+        insert_required = true;
+        insert_value_span = data;
     }
     else
     {
-        // Internal node, find the correct child node
-        int insert_pos = 0;
-        while (insert_pos < count && compare_span(key, { current_node._data.data() + insert_pos * current_node._key_size, current_node._key_size }) > 0)
+        // If not a leaf, we need to find the child node to insert into
+        std::vector<uint8_t> value_at_position_bytes(current_node._value_size);
+        std::span<const uint8_t> value_at_position{ value_at_position_bytes };
+
+        if (!current_node.get_value_at_n(insert_pos, value_at_position))
         {
-            insert_pos++;
+            return false;
+        }
+        filesize_t next_offset = 0;
+        if (!read_filesize(value_at_position, next_offset))
+        {
+            return false;
         }
 
-        // Recursively insert
-        // 
-        // in the correct child
-        bool child_split = false;
-        bool result = insert_recursive(current_node._data[insert_pos], key, data, current_node, child_split);
+        std::vector<uint8_t> key_at_position_bytes(current_node._key_size);
+        std::span<const uint8_t> key_at_position{ key_at_position_bytes };
 
-        if (child_split)
+        if (!current_node.get_key_at_n(insert_pos, key_at_position))
         {
-            // If child split occurred, we need to insert the new key into the parent node
-            std::vector<uint8_t> new_entry(current_node.get_entry_size());
-            std::memcpy(new_entry.data(), key.data(), key.size());
-            std::memcpy(new_entry.data() + key.size(), data.data(), data.size());
+            return false;
+        }
 
-            std::copy(new_entry.begin(), new_entry.end(), std::back_inserter<std::vector<uint8_t>>(current_node._data));
+        std::vector<uint8_t> child_node_key(current_node._key_size);
+        filesize_t child_node_offset = 0;
 
-            if (current_node.get_value_count() > get_maximum_value_count())
+        if (insert_recursive(next_offset, key, data, node_is_split, new_node_key, new_node_offset, child_node_key, child_node_offset))
+        {
+            if (node_is_split)
             {
-                return split_node(current_node, parent_node, root_split);
+                insert_required = true;
+                insert_value.resize(sizeof(filesize_t));
+                insert_value_span = { insert_value };
+                write_filesize(insert_value_span, new_node_offset);
+            }
+        }
+        std::span<const uint8_t>{ child_node_key };
+        if (compare_span(child_node_key, key_at_position) != 0) 
+        {
+            // a key update is necessary
+            current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size(), child_node_key.begin(), child_node_key.end());
+        }
+    }
+
+    if (insert_required)
+    {
+        if (count >= get_maximum_value_count())
+        {
+            split_required = true;
+        }
+    }
+
+    // if the node is a leaf then we know the node's value, and we can decide simply whether to split
+    if (insert_required)
+    {
+        assert(current_node._key_size == key.size());
+        assert(current_node._value_size == insert_value_span.size());
+
+        if (split_required)
+        {
+            // Split the node
+            variable_btree_node new_node(*this);
+            int mid_index = count / 2;
+            int mid_offset = mid_index * current_node.get_entry_size();
+
+            // Build the new node data
+            new_node._is_leaf = current_node._is_leaf;
+            new_node._key_size = current_node._key_size;
+            new_node._value_size = current_node._value_size;
+            new_node._data.assign(current_node._data.begin() + mid_offset, current_node._data.end());
+
+
+            // Set the new node key
+            new_node_key.assign(current_node._data.begin() + mid_offset, current_node._data.begin() + mid_offset + current_node._key_size);
+
+            // Adjust the current node data
+            current_node._data.resize(mid_offset);
+
+            // Insert the new key and data into the correct node
+            if (insert_pos > mid_index)
+            {
+                insert_pos -= mid_index;
+                new_node._data.insert(new_node._data.begin() + insert_pos * new_node.get_entry_size(), key.begin(), key.end());
+                new_node._data.insert(new_node._data.begin() + insert_pos * new_node.get_entry_size() + new_node._key_size, insert_value_span.begin(), insert_value_span.end());
             }
             else
             {
-                return current_node.write_node(node_offset);
+                current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size(), key.begin(), key.end());
+                current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size() + current_node._key_size, insert_value_span.begin(), insert_value_span.end());
             }
+
+            // Write both nodes back
+            new_node_offset = _file.get_file_size();
+            if (!new_node.write_node(new_node_offset))
+            {
+                return false;
+            }
+
+            if (!current_node.write_node(node_offset))
+            {
+                return false;
+            }
+
+            node_is_split = true;
         }
-        return result;
+        else
+        {
+            // Insert the key and data into the current node
+            int offset = insert_pos * current_node.get_entry_size();
+            current_node._data.insert(current_node._data.begin() + offset, key.begin(), key.end());
+            current_node._data.insert(current_node._data.begin() + offset + current_node._key_size, insert_value_span.begin(), insert_value_span.end());
+            return current_node.write_node(node_offset);
+        }
     }
-}
 
-bool logging_btree::split_node(variable_btree_node& node, variable_btree_node& parent_node, bool& root_split) {
-    // Split the node into two halves and promote middle key
-    int mid_index = node.get_value_count() / 2;
-    std::vector<uint8_t> middle_key(node._key_size + value_size);
-    int mid_offset = mid_index * (node._key_size + node._value_size);
-    std::memcpy(middle_key.data(), node._data.data() + mid_offset, node._key_size + value_size);
+    // this may tell the caller that it needs to update it's key for the current node
+    current_node_key.resize(current_node._key_size);
+    std::span<const uint8_t> current_node_span{ current_node_key };
 
-    // Create a new right-hand node
-    variable_btree_node new_node(*this);
-    new_node._is_leaf = node._is_leaf;
-    new_node._key_size = node._key_size;
-    new_node._value_size = node._value_size;
-    new_node._data.assign(node._data.begin() + mid_offset, node._data.end());
-
-    // Remove the right half from the current node
-    node._data.resize(mid_index);
-
-    // Write both nodes back
-    filesize_t new_node_offset = 0;
-    new_node.write_node(new_node_offset);
-    node.write_node(node.get_offset());
-
-    // Promote the middle key to the parent
-    if (parent_node._data.size() < get_maximum_value_count()) {
-        std::copy(middle_key.begin(), middle_key.end(), std::back_inserter<std::vector<uint8_t>>(parent_node._data));
-        return parent_node.write_node(parent_node.get_offset());
-    }
-    else {
-        return split_node(parent_node, parent_node, root_split);
-    }
+    return current_node.get_key_at_n(0, current_node_span);
 }

@@ -42,28 +42,28 @@ inline bool write_filesize(random_access_file& f, filesize_t offset, filesize_t 
 }
 
 // Function prototypes for reading from and writing to memory blocks
-bool read_uint32(const std::span<const uint8_t>& memory, filesize_t offset, uint32_t& data);
-bool read_uint64(const std::span<const uint8_t>& memory, filesize_t offset, uint64_t& data);
-bool read_uint8(const std::span<const uint8_t>& memory, filesize_t offset, uint8_t& data);
-bool read_int32(const std::span<const uint8_t>& memory, filesize_t offset, int32_t& data);
-bool read_int64(const std::span<const uint8_t>& memory, filesize_t offset, int64_t& data);
-bool read_int8(const std::span<const uint8_t>& memory, filesize_t offset, int8_t& data);
-bool read_char(const std::span<const uint8_t>& memory, filesize_t offset, char& data);
+bool read_uint32(const std::span<const uint8_t>& memory, uint32_t& data);
+bool read_uint64(const std::span<const uint8_t>& memory, uint64_t& data);
+bool read_uint8(const std::span<const uint8_t>& memory, uint8_t& data);
+bool read_int32(const std::span<const uint8_t>& memory, int32_t& data);
+bool read_int64(const std::span<const uint8_t>& memory, int64_t& data);
+bool read_int8(const std::span<const uint8_t>& memory, int8_t& data);
+bool read_char(const std::span<const uint8_t>& memory, char& data);
 
-bool write_uint32(std::span<uint8_t>& memory, filesize_t offset, uint32_t data);
-bool write_uint64(std::span<uint8_t>& memory, filesize_t offset, uint64_t data);
-bool write_uint8(std::span<uint8_t>& memory, filesize_t offset, uint8_t data);
-bool write_int32(std::span<uint8_t>& memory, filesize_t offset, int32_t data);
-bool write_int64(std::span<uint8_t>& memory, filesize_t offset, int64_t data);
-bool write_int8(std::span<uint8_t>& memory, filesize_t offset, int8_t data);
-bool write_char(std::span<uint8_t>& memory, filesize_t offset, char data);
+bool write_uint32(std::span<uint8_t>& memory, uint32_t data);
+bool write_uint64(std::span<uint8_t>& memory, uint64_t data);
+bool write_uint8(std::span<uint8_t>& memory, uint8_t data);
+bool write_int32(std::span<uint8_t>& memory, int32_t data);
+bool write_int64(std::span<uint8_t>& memory, int64_t data);
+bool write_int8(std::span<uint8_t>& memory, int8_t data);
+bool write_char(std::span<uint8_t>& memory, char data);
 
-inline bool read_filesize(const std::span<const uint8_t>& memory, filesize_t offset, filesize_t& data)
+inline bool read_filesize(const std::span<const uint8_t>& memory, filesize_t& data)
 {
-    return read_uint64(memory, offset, data);
+    return read_uint64(memory, data);
 }
 
-inline bool write_filesize(std::span<uint8_t>& memory, filesize_t offset, filesize_t data)
+inline bool write_filesize(std::span<uint8_t>& memory, filesize_t data)
 {
-    return write_uint64(memory, offset, data);
+    return write_uint64(memory, data);
 }

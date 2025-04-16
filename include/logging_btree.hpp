@@ -55,6 +55,17 @@ public:
 
 int compare_span(std::span<const uint8_t> a, std::span<const uint8_t> b);
 
+class logging_btree_parameters
+{
+public:
+    random_access_file& file;
+    int key_size = 4;
+    int value_size = 4;
+    int maximum_value_count = 256;
+
+    logging_btree_parameters(random_access_file& file) : file(file) {}
+};
+
 class logging_btree
 {
 private:
@@ -62,25 +73,19 @@ private:
     random_access_file& _file;
     int key_size = 0;
     int value_size = 0;
+    int maximum_value_count = 256;
 
-    int get_maximum_value_count() const { return 256; } // hard code for now
+    int get_maximum_value_count() const { return maximum_value_count; }
 
     bool internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location);
 
-    bool insert_recursive(
-        filesize_t node_offset,
-        const std::span<uint8_t>& key,
-        const std::span<uint8_t>& data,
-        variable_btree_node& parent_node,
-        bool& root_split);
-
-    bool split_node(variable_btree_node& node, variable_btree_node& parent_node, bool& root_split);
+    bool insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset);
 
 public:
-    logging_btree(random_access_file& file);
+    logging_btree(const logging_btree_parameters& parameters);
     bool create_empty_root_node(filesize_t offset, filesize_t& node_size);
 
     bool find_key(int root_offset, const std::span<uint8_t>& key, value_location& location);
-    bool insert_key_and_data(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
+    bool insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset);
     bool update_data_at_key(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
 };
