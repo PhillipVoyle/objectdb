@@ -22,7 +22,7 @@ public:
         return true;
     }
 
-    bool read_data(filesize_t offset, std::span<uint8_t>& data) override {
+    bool read_data(filesize_t offset, const std::span<uint8_t>& data) override {
         if (offset + data.size() > buffer.size())
             return false;
 

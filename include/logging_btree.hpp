@@ -34,9 +34,8 @@ public:
 
     filesize_t get_node_size() const;
 
-    bool get_key_at_n(int n, std::span<uint8_t>& key) const;
-
-    bool get_value_at_n(int n, std::span<uint8_t>& value) const;
+    bool get_key_at_n(int n, const std::span<uint8_t>& key) const;
+    bool get_value_at_n(int n, const std::span<uint8_t>& value) const;
 };
 
 class key_offset
@@ -53,7 +52,7 @@ public:
     std::vector<key_offset> best_value_position;
 };
 
-int compare_span(std::span<const uint8_t> a, std::span<const uint8_t> b);
+int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b);
 
 class logging_btree_parameters
 {

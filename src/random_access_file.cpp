@@ -22,29 +22,25 @@ bool read_uint32(random_access_file& f, filesize_t offset, uint32_t& data)
 bool read_uint64(random_access_file& f, filesize_t offset, uint64_t& data)
 {
     std::vector<uint8_t> vec(8);
-    std::span<uint8_t> s(vec);
-    assert(s.size() == 8);
-    assert(s.size_bytes() == 8);
-    if (!f.read_data(offset, s))
+    assert(vec.size() == 8);
+    if (!f.read_data(offset, vec))
     {
         return false;
     }
 
-    return read_uint64(s, data);
+    return read_uint64(vec, data);
 }
 
 bool read_uint8(random_access_file& f, filesize_t offset, uint8_t& data)
 {
     std::vector<uint8_t> vec(1);
-    std::span<uint8_t> s(vec);
-    assert(s.size() == 1);
-    assert(s.size_bytes() == 1);
-    if (!f.read_data(offset, s))
+    assert(vec.size() == 1);
+    if (!f.read_data(offset, vec))
     {
         return false;
     }
 
-    return read_uint8(s, data);
+    return read_uint8(vec, data);
 }
 
 bool read_int32(random_access_file& f, filesize_t offset, int32_t& data)
@@ -90,39 +86,35 @@ bool read_char(random_access_file& f, filesize_t offset, char& data)
 bool write_uint32(random_access_file& f, filesize_t offset, uint32_t data)
 {
     std::vector<uint8_t> vec(4);
-    std::span<uint8_t> s{ vec };
 
-    assert(s.size() == 4);
+    assert(vec.size() == 4);
 
-    if (!write_uint32(s, data))
+    if (!write_uint32(vec, data))
     {
         return false;
     }
-    return f.write_data(offset, s);
+    return f.write_data(offset, vec);
 }
 
 bool write_uint64(random_access_file& f, filesize_t offset, uint64_t data)
 {
     std::vector<uint8_t> vec(8);
-    std::span<uint8_t> s{ vec };
 
-    if (!write_uint64(s, data))
+    if (!write_uint64(vec, data))
     {
         return false;
     }
 
-    return f.write_data(offset, s);
+    return f.write_data(offset, vec);
 }
 
 bool write_uint8(random_access_file& f, filesize_t offset, uint8_t data)
 {
-    std::vector<uint8_t> vec(8);
-    std::span<uint8_t> s{ vec };
+    std::vector<uint8_t> vec(1);
+    assert(vec.size() == 1);
+    vec[0] = data;
 
-    auto it = s.rbegin();
-    *it = data;
-
-    return f.write_data(offset, s);
+    return f.write_data(offset, vec);
 }
 
 bool write_int32(random_access_file& f, filesize_t offset, int32_t data)
@@ -144,7 +136,7 @@ bool write_char(random_access_file& f, filesize_t offset, char data)
     return write_uint8(f, offset, (int8_t)data);
 }
 
-bool read_uint32(const std::span<const uint8_t>& memory, uint32_t& data)
+bool read_uint32(const std::span<uint8_t>& memory, uint32_t& data)
 {
     if (4 > memory.size())
     {
@@ -166,7 +158,7 @@ bool read_uint32(const std::span<const uint8_t>& memory, uint32_t& data)
     return true;
 }
 
-bool read_uint64(const std::span<const uint8_t>& memory, uint64_t& data)
+bool read_uint64(const std::span<uint8_t>& memory, uint64_t& data)
 {
     if (8 > memory.size())
     {
@@ -196,7 +188,7 @@ bool read_uint64(const std::span<const uint8_t>& memory, uint64_t& data)
     return true;
 }
 
-bool read_uint8(const std::span<const uint8_t>& memory, uint8_t& data)
+bool read_uint8(const std::span<uint8_t>& memory, uint8_t& data)
 {
     if (1 > memory.size())
     {
@@ -207,7 +199,7 @@ bool read_uint8(const std::span<const uint8_t>& memory, uint8_t& data)
     return true;
 }
 
-bool read_int32(const std::span<const uint8_t>& memory, int32_t& data)
+bool read_int32(const std::span<uint8_t>& memory, int32_t& data)
 {
     if (uint32_t stg = 0; read_uint32(memory, stg))
     {
@@ -217,7 +209,7 @@ bool read_int32(const std::span<const uint8_t>& memory, int32_t& data)
     return false;
 }
 
-bool read_int64(const std::span<const uint8_t>& memory, int64_t& data)
+bool read_int64(const std::span<uint8_t>& memory, int64_t& data)
 {
     if (uint64_t stg = 0; read_uint64(memory, stg))
     {
@@ -227,7 +219,7 @@ bool read_int64(const std::span<const uint8_t>& memory, int64_t& data)
     return false;
 }
 
-bool read_int8(const std::span<const uint8_t>& memory, int8_t& data)
+bool read_int8(const std::span<uint8_t>& memory, int8_t& data)
 {
     if (uint8_t stg = 0; read_uint8(memory, stg))
     {
@@ -237,7 +229,7 @@ bool read_int8(const std::span<const uint8_t>& memory, int8_t& data)
     return false;
 }
 
-bool read_char(const std::span<const uint8_t>& memory, char& data)
+bool read_char(const std::span<uint8_t>& memory, char& data)
 {
     if (uint8_t stg = 0; read_uint8(memory, stg))
     {
@@ -247,7 +239,7 @@ bool read_char(const std::span<const uint8_t>& memory, char& data)
     return false;
 }
 
-bool write_uint32(std::span<uint8_t>& memory, uint32_t data)
+bool write_uint32(const std::span<uint8_t>& memory, uint32_t data)
 {
     if (4 > memory.size())
     {
@@ -264,7 +256,7 @@ bool write_uint32(std::span<uint8_t>& memory, uint32_t data)
     return true;
 }
 
-bool write_uint64(std::span<uint8_t>& memory, uint64_t data)
+bool write_uint64(const std::span<uint8_t>& memory, uint64_t data)
 {
     if (8 > memory.size())
     {
@@ -285,7 +277,7 @@ bool write_uint64(std::span<uint8_t>& memory, uint64_t data)
     return true;
 }
 
-bool write_uint8(std::span<uint8_t>& memory, uint8_t data)
+bool write_uint8(const std::span<uint8_t>& memory, uint8_t data)
 {
     if (1 > memory.size())
     {
@@ -296,22 +288,22 @@ bool write_uint8(std::span<uint8_t>& memory, uint8_t data)
     return true;
 }
 
-bool write_int32(std::span<uint8_t>& memory, int32_t data)
+bool write_int32(const std::span<uint8_t>& memory, int32_t data)
 {
     return write_uint32(memory, static_cast<uint32_t>(data));
 }
 
-bool write_int64(std::span<uint8_t>& memory, int64_t data)
+bool write_int64(const std::span<uint8_t>& memory, int64_t data)
 {
     return write_uint64(memory, static_cast<uint64_t>(data));
 }
 
-bool write_int8(std::span<uint8_t>& memory, filesize_t offset, int8_t data)
+bool write_int8(const std::span<uint8_t>& memory, int8_t data)
 {
     return write_uint8(memory, static_cast<uint8_t>(data));
 }
 
-bool write_char(std::span<uint8_t>& memory, filesize_t offset, char data)
+bool write_char(const std::span<uint8_t>& memory, char data)
 {
     return write_uint8(memory, static_cast<uint8_t>(data));
 }

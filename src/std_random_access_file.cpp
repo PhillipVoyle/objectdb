@@ -40,7 +40,7 @@ bool std_random_access_file::write_data(filesize_t offset, const std::span<uint8
     return file_.good();
 }
 
-bool std_random_access_file::read_data(filesize_t offset, std::span<uint8_t>& data) {
+bool std_random_access_file::read_data(filesize_t offset, const std::span<uint8_t>& data) {
     if (!is_open_) return false;
 
     file_.seekg(offset, std::ios::beg);

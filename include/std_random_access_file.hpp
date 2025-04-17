@@ -11,7 +11,7 @@ public:
 
     filesize_t get_file_size() override;
     bool write_data(filesize_t offset, const std::span<uint8_t>& data) override;
-    bool read_data(filesize_t offset, std::span<uint8_t>& data) override;
+    bool read_data(filesize_t offset, const std::span<uint8_t>& data) override;
 
 private:
     std::fstream file_;
