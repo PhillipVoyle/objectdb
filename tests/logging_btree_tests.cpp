@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <unordered_map>
 #include <cstring>
+#include <iostream>
 
 #include "../include/logging_btree.hpp"
 #include "../include/std_random_access_file.hpp"
@@ -14,6 +15,80 @@ namespace fs = std::filesystem;
 static std::string generate_temp_filename() {
     return (fs::temp_directory_path() / ("gtest_file_" + std::to_string(std::rand()) + ".bin")).string();
 }
+
+class printable_logging_btree : public logging_btree
+{
+public:
+    printable_logging_btree(logging_btree_parameters& parms) : logging_btree(parms)
+    {
+    }
+
+    std::string format_value(const std::span<uint8_t>& value)
+    {
+        std::string result;
+        bool bfirst = true;
+        for (auto byte : value)
+        {
+            if (bfirst)
+            {
+                bfirst = false;
+            }
+            else
+            {
+                result += ", ";
+            }
+            result += std::to_string(byte);
+        }
+        return result;
+    }
+
+    void print_tree(filesize_t offset, const std::string& prefix = "")
+    {
+        variable_btree_node node(*this);
+        if (!node.read_node(offset))
+        {
+            std::cout << "Failed to read node at offset: " << offset << std::endl;
+            return;
+        }
+        std::cout << prefix << "Node at offset: " << offset << ", is_leaf: " << node._is_leaf
+            << ", key_size: " << node._key_size
+            << ", value_size: " << node._value_size
+            << ", data size: " << node._data.size() << std::endl;
+        for (int i = 0; i < node.get_value_count(); ++i)
+        {
+            filesize_t child_offset = 0;
+            std::vector<uint8_t> key_at_n(node._key_size);
+            std::vector<uint8_t> value_at_n(node._value_size);
+
+            if (!node.get_key_at_n(i, key_at_n))
+            {
+                std::cout << "Failed to get key at index: " << i << std::endl;
+                return;
+            }
+            if (!node.get_value_at_n(i, value_at_n))
+            {
+                std::cout << "Failed to get value at index: " << i << std::endl;
+                return;
+            }
+
+            std::cout << prefix << format_value(key_at_n) << " -> " << format_value(value_at_n) << std::endl;
+
+            if (!node._is_leaf)
+            {
+                if (!read_filesize(value_at_n, child_offset))
+                {
+                    std::cout << "Failed to read child offset at index: " << i << std::endl;
+                    return;
+                }
+                std::cout << prefix << "Child node offset: " << child_offset << std::endl;
+                // Recursively print the child node
+                // Note: This is a recursive call, so be careful with large trees to avoid stack overflow
+                // You may want to limit the depth of recursion or use an iterative approach for large trees
+                print_tree(child_offset, prefix + "   ");
+            }
+        }
+    }
+};
 
 class StdRandomAccessFileTest : public ::testing::Test {
 protected:
@@ -42,8 +117,7 @@ TEST_F(StdRandomAccessFileTest, WriteAndReadSmallData) {
     EXPECT_TRUE(file.write_data(0, write_buf));
 
     std::vector<uint8_t> read_buf(5);
-    std::span<uint8_t> read_span(read_buf);
-    EXPECT_TRUE(file.read_data(0, read_span));
+    EXPECT_TRUE(file.read_data(0, read_buf));
     EXPECT_EQ(read_buf, write_buf);
 }
 
@@ -54,8 +128,7 @@ TEST_F(StdRandomAccessFileTest, WriteAtOffsetAndReadBack) {
     EXPECT_TRUE(file.write_data(100, write_buf));
 
     std::vector<uint8_t> read_buf(4);
-    std::span<uint8_t> read_span(read_buf);
-    EXPECT_TRUE(file.read_data(100, read_span));
+    EXPECT_TRUE(file.read_data(100, read_buf));
     EXPECT_EQ(read_buf, write_buf);
 }
 
@@ -71,13 +144,13 @@ class LoggingBTreeTest : public ::testing::Test {
 protected:
 
     memory_random_access_file std_file;
-    logging_btree* btree = nullptr;
+    printable_logging_btree* btree = nullptr;
 
     void SetUp() override
     {
         logging_btree_parameters params(std_file);
         params.maximum_value_count = 2;
-        btree = new logging_btree(params);
+        btree = new printable_logging_btree(params);
     }
 
     void TearDown() override
@@ -146,6 +219,14 @@ TEST_F(LoggingBTreeTest, InsertKeyAndDataAndFindKey)
     std::vector<uint8_t> key3 = { 8, 1, 4, 5 };
     std::vector<uint8_t> data3 = { 77, 2, 7, 99 };
 
+    // this is intended to prefix the entire data set
+    std::vector<uint8_t> key4 = { 0, 3, 4, 5 };
+    std::vector<uint8_t> data4 = { 12, 2, 7, 99 };
+
+    // this is intended to suffix the entire data set
+    std::vector<uint8_t> key5 = { 99, 3, 4, 8 };
+    std::vector<uint8_t> data5 = { 88, 2, 2, 2 };
+
     filesize_t root_offset = std_file.get_file_size();
     filesize_t node_size = 0;
     auto create_result = btree->create_empty_root_node(root_offset, node_size);
@@ -160,10 +241,37 @@ TEST_F(LoggingBTreeTest, InsertKeyAndDataAndFindKey)
     result = btree->insert_key_and_data(root_offset, key3, data3, root_offset);
     EXPECT_TRUE(result);
 
-    std::vector<uint8_t> value_at_position;
-    bool found = false;
-    result = btree->read_value_at_key(root_offset, key2, found, value_at_position);
+    result = btree->insert_key_and_data(root_offset, key4, data4, root_offset);
     EXPECT_TRUE(result);
 
+    result = btree->insert_key_and_data(root_offset, key5, data5, root_offset);
+    EXPECT_TRUE(result);
+
+    btree->print_tree(root_offset);
+
+    std::vector<uint8_t> value_at_position;
+    bool found = false;
+    result = btree->read_value_at_key(root_offset, key1, found, value_at_position);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(0, compare_span(value_at_position, data1));
+
+    found = false;
+    result = btree->read_value_at_key(root_offset, key2, found, value_at_position);
+    EXPECT_TRUE(result);
     EXPECT_EQ(0, compare_span(value_at_position, data2));
+
+    found = false;
+    result = btree->read_value_at_key(root_offset, key3, found, value_at_position);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(0, compare_span(value_at_position, data3));
+
+    found = false;
+    result = btree->read_value_at_key(root_offset, key4, found, value_at_position);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(0, compare_span(value_at_position, data4));
+
+    found = false;
+    result = btree->read_value_at_key(root_offset, key5, found, value_at_position);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(0, compare_span(value_at_position, data5));
 }

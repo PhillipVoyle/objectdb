@@ -376,16 +376,42 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
 
     // find the insert position
     int insert_pos = 0;
-    while (insert_pos < count && compare_span(key, { current_node._data.data() + insert_pos * current_node._key_size, current_node._key_size }) > 0)
+    for(;;)
     {
+        if (insert_pos >= count)
+        {
+            break;
+        }
+        std::vector<uint8_t> key_at_position(current_node._key_size);
+        if (!current_node.get_key_at_n(insert_pos, key_at_position))
+        {
+            return false;
+        }
+        int comparison = compare_span(key, key_at_position);
+
+        if (comparison < 0)
+        {
+            break;
+        }
+        else if (comparison == 0)
+        {
+            // key already exists, we need to update the value
+            if (is_leaf)
+            {
+                return false;
+            }
+        }
         insert_pos++;
     }
 
     std::vector<uint8_t> insert_value; // placeholder. Used only if this is a branch node
     std::span<uint8_t> insert_value_span;
+    std::vector<uint8_t> insert_key;
+    std::span<uint8_t> insert_key_span = key;
 
     bool insert_required = false;
     bool split_required = false;
+    bool updated_occurred = false;
 
     if (is_leaf)
     {
@@ -399,7 +425,14 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
         std::vector<uint8_t> value_at_position_bytes(current_node._value_size);
         std::span<uint8_t> value_at_position{ value_at_position_bytes };
 
-        if (!current_node.get_value_at_n(insert_pos, value_at_position))
+        // the only way we expand a node is by splitting a child node, so we don't want to go off the end
+        auto get_value_pos = insert_pos;
+        if (get_value_pos >= count)
+        {
+            get_value_pos = count - 1;
+        }
+
+        if (!current_node.get_value_at_n(get_value_pos, value_at_position))
         {
             return false;
         }
@@ -411,7 +444,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
 
         std::vector<uint8_t> key_at_position(current_node._key_size);
 
-        if (!current_node.get_key_at_n(insert_pos, key_at_position))
+        if (!current_node.get_key_at_n(get_value_pos, key_at_position))
         {
             return false;
         }
@@ -419,20 +452,29 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
         std::vector<uint8_t> child_node_key(current_node._key_size);
         filesize_t child_node_offset = 0;
 
-        if (insert_recursive(next_offset, key, data, node_is_split, new_node_key, new_node_offset, child_node_key, child_node_offset))
+        if (!insert_recursive(next_offset, key, data, node_is_split, new_node_key, new_node_offset, child_node_key, child_node_offset))
         {
-            if (node_is_split)
+            return false;
+        }
+
+        if (node_is_split)
+        {
+            insert_required = true;
+            insert_value.resize(sizeof(filesize_t));
+            insert_value_span = { insert_value };
+            insert_key_span = { new_node_key };
+            if (!write_filesize(insert_value_span, new_node_offset))
             {
-                insert_required = true;
-                insert_value.resize(sizeof(filesize_t));
-                insert_value_span = { insert_value };
-                write_filesize(insert_value_span, new_node_offset);
+                return false;
             }
         }
-        if (compare_span(child_node_key, key_at_position) != 0) 
+
+        if (compare_span(child_node_key, key_at_position) != 0)
         {
             // a key update is necessary
-            current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size(), child_node_key.begin(), child_node_key.end());
+            auto key_start = current_node._data.begin() + (get_value_pos * current_node.get_entry_size());
+            std::copy(child_node_key.begin(), child_node_key.end(), key_start);
+            updated_occurred = true;
         }
     }
 
@@ -464,8 +506,6 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             new_node._data.assign(current_node._data.begin() + mid_offset, current_node._data.end());
 
 
-            // Set the new node key
-            new_node_key.assign(current_node._data.begin() + mid_offset, current_node._data.begin() + mid_offset + current_node._key_size);
 
             // Adjust the current node data
             current_node._data.resize(mid_offset);
@@ -474,14 +514,18 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             if (insert_pos > mid_index)
             {
                 insert_pos -= mid_index;
-                new_node._data.insert(new_node._data.begin() + insert_pos * new_node.get_entry_size(), key.begin(), key.end());
+                new_node._data.insert(new_node._data.begin() + insert_pos * new_node.get_entry_size(), insert_key_span.begin(), insert_key_span.end());
                 new_node._data.insert(new_node._data.begin() + insert_pos * new_node.get_entry_size() + new_node._key_size, insert_value_span.begin(), insert_value_span.end());
             }
             else
             {
-                current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size(), key.begin(), key.end());
+                current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size(), insert_key_span.begin(), insert_key_span.end());
                 current_node._data.insert(current_node._data.begin() + insert_pos * current_node.get_entry_size() + current_node._key_size, insert_value_span.begin(), insert_value_span.end());
             }
+
+            // Set the new node key
+            new_node_key.resize(new_node._key_size);
+            new_node.get_key_at_n(0, new_node_key);
 
             // Write both nodes back
             new_node_offset = _file.get_file_size();
@@ -503,7 +547,18 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             int offset = insert_pos * current_node.get_entry_size();
             current_node._data.insert(current_node._data.begin() + offset, key.begin(), key.end());
             current_node._data.insert(current_node._data.begin() + offset + current_node._key_size, insert_value_span.begin(), insert_value_span.end());
-            return current_node.write_node(node_offset);
+            if (!current_node.write_node(node_offset))
+            {
+                return false;
+            }
+        }
+    }
+    else if (updated_occurred)
+    {
+        // if we updated the key, we need to write the node back
+        if (!current_node.write_node(node_offset))
+        {
+            return false;
         }
     }
 

@@ -68,7 +68,7 @@ public:
 
 class logging_btree
 {
-private:
+protected:
     friend class variable_btree_node;
     random_access_file& _file;
     int key_size = 0;
