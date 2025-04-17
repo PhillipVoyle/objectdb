@@ -11,7 +11,6 @@ filesize_t variable_btree_node::get_offset() const
     return _offset;
 }
 
-
 random_access_file& variable_btree_node::file()
 {
     return _btree._file;
@@ -107,35 +106,75 @@ bool variable_btree_node::write_node(filesize_t offset)
     current_offset += 4;
 
     std::span<uint8_t> s(_data);
-    return file().write_data(current_offset, s);
+    if (!file().write_data(current_offset, s))
+    {
+        return false;
+    }
+
+    if (!_btree.copy_on_write)
+    {
+        // if we're not writing a new node each time the node needs to have a predictable size
+        // fill in the remaining bytes with 0
+        auto remaining_count = (_btree.get_maximum_value_count() - get_value_count());
+        assert(remaining_count >= 0);
+        if (remaining_count > 0)
+        {
+            std::vector<uint8_t> zero_fill(remaining_count * get_entry_size(), 0);
+            std::span<uint8_t> zero_span(zero_fill);
+            if (!file().write_data(current_offset + s.size(), zero_span))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 filesize_t variable_btree_node::get_node_size() const
 {
-    return 16 + _data.size();
+    if (_btree.copy_on_write)
+    {
+        // if we're using a copy on write, we can just return the size of the 
+        return 16 + _data.size();
+    }
+    else
+    {
+        // if we aren't copying on write, we may need to grow the node
+        // which would mean overlaps. We don't want that, so instead calculate a predictable size
+        // for the node.
+        // this is the size of the header
+        auto header_size = 4 + 4 + 4 + 4;
+        // this is the size of the data
+        // note this size may depend on whether the node is a leaf or internal node
+        auto data_size = _btree.get_maximum_value_count() * get_entry_size();
+        return header_size + data_size;
+    }
 }
 
-bool variable_btree_node::get_key_at_n(int n, std::span<const uint8_t>& key) const
+bool variable_btree_node::get_key_at_n(int n, std::span<uint8_t>& key) const
 {
     auto data_offset = get_entry_size() * n;
     auto value_offset = data_offset + _key_size;
 
     assert(value_offset <= _data.size());
+    assert(key.size() == _key_size);
 
-    key = std::span<const uint8_t>(_data.begin() + data_offset, _data.begin() + value_offset);
+    std::copy(_data.begin() + data_offset, _data.begin() + value_offset, key.begin());
 
     return true;
 }
 
-bool variable_btree_node::get_value_at_n(int n, std::span<const uint8_t>& value) const
+bool variable_btree_node::get_value_at_n(int n, std::span<uint8_t>& value) const
 {
     auto data_offset = get_entry_size() * n;
     auto value_offset = data_offset + _key_size;
     auto value_end_offset = value_offset + _value_size;
 
     assert(value_end_offset <= _data.size());
+    assert(value.size() == _value_size);
 
-    value = std::span<const uint8_t>(_data.begin() + value_offset, _data.begin() + value_end_offset);
+    std::copy(_data.begin() + value_offset, _data.begin() + value_end_offset, value.begin());
     return true;
 }
 
@@ -186,7 +225,7 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
 
     for (int n = 0; n < data_count; n++)
     {
-        std::span<const uint8_t> key_at_n;
+        std::span<uint8_t> key_at_n;
         if (!node.get_key_at_n(n, key_at_n))
         {
             return false;
@@ -211,7 +250,7 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
     location.best_value_position.push_back(offset);
     if (!node._is_leaf)
     {
-        std::span<const uint8_t> value_at_position;
+        std::span<uint8_t> value_at_position;
         if (!node.get_value_at_n(prev_position, value_at_position))
         {
             return false;
@@ -238,7 +277,8 @@ logging_btree::logging_btree(const logging_btree_parameters& parms) :
     _file(parms.file),
     key_size(parms.key_size),
     value_size(parms.value_size),
-    maximum_value_count(parms.maximum_value_count)
+    maximum_value_count(parms.maximum_value_count),
+    copy_on_write(parms.copy_on_write)
 {
     assert(key_size > 0 && value_size > 0);
 }
@@ -300,18 +340,24 @@ bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<
 
         std::vector<uint8_t> current_offset_bytes(sizeof(filesize_t));
         std::span<uint8_t> current_offset_span(current_offset_bytes);
-        write_filesize(current_offset_span, new_node_offset);
+        if (!write_filesize(current_offset_span, current_node_offset))
+        {
+            return false;
+        }
 
-        std::vector<uint8_t> new_offset_bytes(new_node_key.size());
+        std::vector<uint8_t> new_offset_bytes(sizeof(filesize_t));
         std::span<uint8_t> new_offset_span{ new_offset_bytes };
-        write_filesize(new_offset_span, new_node_offset);
+        if (!write_filesize(new_offset_span, new_node_offset))
+        {
+            return false;
+        }
 
         std::span<const uint8_t> current_node_key{ current_node_key_bytes };
         new_root._data.insert(new_root._data.end(), current_node_key.begin(), current_node_key.end());
         new_root._data.insert(new_root._data.end(), current_offset_bytes.begin(), current_offset_bytes.end());
 
         new_root._data.insert(new_root._data.end(), new_node_key.begin(), new_node_key.end());
-        new_root._data.insert(new_root._data.end(), new_offset_span.begin(), new_offset_span.end());
+        new_root._data.insert(new_root._data.end(), new_offset_bytes.begin(), new_offset_bytes.end());
 
         new_root._data.shrink_to_fit();
 
@@ -358,7 +404,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
     {
         // If not a leaf, we need to find the child node to insert into
         std::vector<uint8_t> value_at_position_bytes(current_node._value_size);
-        std::span<const uint8_t> value_at_position{ value_at_position_bytes };
+        std::span<uint8_t> value_at_position{ value_at_position_bytes };
 
         if (!current_node.get_value_at_n(insert_pos, value_at_position))
         {
@@ -371,7 +417,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
         }
 
         std::vector<uint8_t> key_at_position_bytes(current_node._key_size);
-        std::span<const uint8_t> key_at_position{ key_at_position_bytes };
+        std::span<uint8_t> key_at_position{ key_at_position_bytes };
 
         if (!current_node.get_key_at_n(insert_pos, key_at_position))
         {
@@ -472,7 +518,75 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
 
     // this may tell the caller that it needs to update it's key for the current node
     current_node_key.resize(current_node._key_size);
-    std::span<const uint8_t> current_node_span{ current_node_key };
+    std::span<uint8_t> current_node_span{ current_node_key };
 
     return current_node.get_key_at_n(0, current_node_span);
+}
+
+
+bool logging_btree::read_value_at_key(filesize_t node_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data)
+{
+    variable_btree_node current_node(*this);
+    if (!current_node.read_node(node_offset)) return false;
+
+    found = false;
+    int position = 0;
+    int prev_position = -1;
+    for (position = 0; position < current_node.get_value_count(); position++)
+    {
+        std::vector<uint8_t> key_at_n_bytes(current_node._key_size);
+        std::span<uint8_t> key_at_n{ key_at_n_bytes };
+        if (!current_node.get_key_at_n(position, key_at_n))
+        {
+            return false;
+        }
+        auto comparison = compare_span(key, key_at_n);
+
+        if (comparison < 0)
+        {
+            break;
+        }
+
+        prev_position = position;
+        if (comparison == 0)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    if (current_node._is_leaf)
+    {
+        if (found)
+        {
+            std::vector<uint8_t> value_at_n_bytes(current_node._value_size);
+            std::span<uint8_t> value_at_n{ value_at_n_bytes };
+            if (!current_node.get_value_at_n(position, value_at_n))
+            {
+                return false;
+            }
+            data.assign(value_at_n.begin(), value_at_n.end());
+        }
+        return true;
+    }
+    else if (prev_position == -1)
+    {
+        found = false;
+    }
+    else
+    {
+        std::vector<uint8_t> value_at_n_bytes(current_node._value_size);
+        std::span<uint8_t> value_at_n{ value_at_n_bytes };
+        if (!current_node.get_value_at_n(prev_position, value_at_n))
+        {
+            return false;
+        }
+        filesize_t next_offset = 0;
+        if (!read_filesize(value_at_n, next_offset))
+        {
+            return false;
+        }
+        return read_value_at_key(next_offset, key, found, data);
+    }
+    return true;
 }

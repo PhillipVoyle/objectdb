@@ -88,10 +88,11 @@ protected:
 
 TEST_F(LoggingBTreeTest, CreateEmptyRootNode) {
     filesize_t node_size = 0;
-    bool result = btree->create_empty_root_node(0, node_size);
+    auto root_offset = std_file.get_file_size();
+    bool result = btree->create_empty_root_node(root_offset, node_size);
     EXPECT_TRUE(result);
-    EXPECT_EQ(node_size, 16);
-    EXPECT_EQ(std_file.get_file_size(), 16);
+    EXPECT_EQ(node_size, 32); // 16 bytes for the header, and 8 bytes for each of the 2 values
+    EXPECT_EQ(std_file.get_file_size(), root_offset + node_size);
 }
 
 TEST_F(LoggingBTreeTest, VariableBTreeNodeWriteAndRead) {
@@ -134,10 +135,8 @@ TEST_F(LoggingBTreeTest, InsertKeyAndData)
     EXPECT_TRUE(result);
 }
 
-
 TEST_F(LoggingBTreeTest, InsertKeyAndDataAndFindKey)
 {
-    filesize_t new_root_offset = 0;
     std::vector<uint8_t> key1 = { 1, 2, 3, 4 };
     std::vector<uint8_t> data1 = { 5, 6, 7, 8 };
 
@@ -147,19 +146,24 @@ TEST_F(LoggingBTreeTest, InsertKeyAndDataAndFindKey)
     std::vector<uint8_t> key3 = { 8, 1, 4, 5 };
     std::vector<uint8_t> data3 = { 77, 2, 7, 99 };
 
-    auto offset = std_file.get_file_size();
+    filesize_t root_offset = std_file.get_file_size();
     filesize_t node_size = 0;
-    auto create_result = btree->create_empty_root_node(offset, node_size);
+    auto create_result = btree->create_empty_root_node(root_offset, node_size);
     EXPECT_TRUE(create_result);
 
-    bool result = btree->insert_key_and_data(offset, key1, data1, new_root_offset);
+    bool result = btree->insert_key_and_data(root_offset, key1, data1, root_offset);
     EXPECT_TRUE(result);
-    result = btree->insert_key_and_data(new_root_offset, key2, data2, new_root_offset);
+
+    result = btree->insert_key_and_data(root_offset, key2, data2, root_offset);
     EXPECT_TRUE(result);
-    result = btree->insert_key_and_data(new_root_offset, key3, data3, new_root_offset);
+
+    result = btree->insert_key_and_data(root_offset, key3, data3, root_offset);
     EXPECT_TRUE(result);
-    value_location location;
-    result = btree->find_key(new_root_offset, key2, location);
+
+    std::vector<uint8_t> value_at_position;
+    bool found = false;
+    result = btree->read_value_at_key(root_offset, key2, found, value_at_position);
     EXPECT_TRUE(result);
-    EXPECT_EQ(location.best_value_position.size(), 1);
+
+    EXPECT_EQ(0, compare_span(value_at_position, data2));
 }

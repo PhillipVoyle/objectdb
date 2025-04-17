@@ -34,9 +34,9 @@ public:
 
     filesize_t get_node_size() const;
 
-    bool get_key_at_n(int n, std::span<const uint8_t>& key) const;
+    bool get_key_at_n(int n, std::span<uint8_t>& key) const;
 
-    bool get_value_at_n(int n, std::span<const uint8_t>& value) const;
+    bool get_value_at_n(int n, std::span<uint8_t>& value) const;
 };
 
 class key_offset
@@ -62,6 +62,7 @@ public:
     int key_size = 4;
     int value_size = 4;
     int maximum_value_count = 256;
+    bool copy_on_write = false;
 
     logging_btree_parameters(random_access_file& file) : file(file) {}
 };
@@ -74,6 +75,7 @@ private:
     int key_size = 0;
     int value_size = 0;
     int maximum_value_count = 256;
+    bool copy_on_write = false;
 
     int get_maximum_value_count() const { return maximum_value_count; }
 
@@ -88,4 +90,5 @@ public:
     bool find_key(int root_offset, const std::span<uint8_t>& key, value_location& location);
     bool insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset);
     bool update_data_at_key(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
+    bool read_value_at_key(filesize_t root_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data);
 };
