@@ -63,7 +63,7 @@ int variable_btree_node::get_entry_size() const
 
 int variable_btree_node::get_value_count() const
 {
-    uint32_t value_count = _data.size() / get_entry_size();
+    uint32_t value_count = static_cast<uint32_t>(_data.size() / get_entry_size());
     return value_count;
 }
 

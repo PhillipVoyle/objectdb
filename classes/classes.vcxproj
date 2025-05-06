@@ -27,7 +27,6 @@
     <ClInclude Include="..\include\std_random_access_file.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\btree.cpp" />
     <ClCompile Include="..\src\file_object_allocator.cpp" />
     <ClCompile Include="..\src\flat_file.cpp" />
     <ClCompile Include="..\src\logging_btree.cpp" />
