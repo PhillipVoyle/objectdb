@@ -11,6 +11,7 @@ public:
    virtual ~file_object_allocator() = default;
 
    virtual bool allocate_block(filesize_t& offset) = 0;
+   virtual bool free_block(filesize_t offset) = 0;
    virtual filesize_t get_block_size() const = 0;
 };
 
@@ -29,4 +30,5 @@ public:
     bool write_data(filesize_t blocknum, const std::span<uint8_t>& data) override;
     bool read_data(filesize_t blocknum, const std::span<uint8_t>& data) override;
     bool allocate_block(filesize_t& offset) override;
+    bool free_block(filesize_t offset) override;
 };
