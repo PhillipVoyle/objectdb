@@ -5,7 +5,6 @@
 #include <vector>
 #include <cassert>
 
-
 class logging_btree;
 
 class variable_btree_node
