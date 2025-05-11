@@ -39,7 +39,7 @@
     <ClInclude Include="..\include\*.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\file_object_allocator.h">
+    <ClInclude Include="..\include\file_object_allocator.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\include\flat_file.hpp">

@@ -27,6 +27,7 @@ public:
     ~file_object_allocator_impl() final = default;
 
     filesize_t get_block_size() const override;
+    filesize_t get_file_size() override;
     bool write_data(filesize_t blocknum, const std::span<uint8_t>& data) override;
     bool read_data(filesize_t blocknum, const std::span<uint8_t>& data) override;
     bool allocate_block(filesize_t& offset) override;

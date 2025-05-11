@@ -1,4 +1,4 @@
-#include "../include/file_object_allocator.h"
+#include "../include/file_object_allocator.hpp"
 #include <exception>
 #include <vector>
 #include <cassert>
@@ -17,6 +17,11 @@ file_object_allocator_impl::file_object_allocator_impl(random_access_file& file,
 filesize_t file_object_allocator_impl::get_block_size() const
 {
     return block_size_;
+}
+
+filesize_t file_object_allocator_impl::get_file_size()
+{
+    return file_.get_file_size();
 }
 
 bool file_object_allocator_impl::write_data(filesize_t offset, const std::span<uint8_t>& data)
@@ -113,6 +118,7 @@ bool file_object_allocator_impl::allocate_block(filesize_t& offset)
         {
             return false;
         }
+        offset = freelist_first_block_offset;
         return true;
     }
 
@@ -195,8 +201,8 @@ bool file_object_allocator_impl::free_block(filesize_t offset)
 
 bool file_object_allocator_impl::allocate_new_block(filesize_t& offset)
 {
-    auto result = file_.get_file_size();
+    offset = file_.get_file_size();
     std::vector<uint8_t> block(block_size_, 0);
-    return file_.write_data(result, block);
+    return file_.write_data(offset, block);
 }
 
