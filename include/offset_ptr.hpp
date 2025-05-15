@@ -42,6 +42,16 @@ public:
         return offset_ == 0;
     }
 
+    bool read_from_span(const std::span<uint8_t>& s)
+    {
+        return read_filesize(s, offset_);
+    }
+
+    bool write_to_span(const std::span<uint8_t>& s)
+    {
+        return write_filesize(s, offset_);
+    }
+
     // I'm torn about having to write both file and span versions of these
     bool read_object(random_access_file& raf, record_type& record)
     {
@@ -65,7 +75,7 @@ public:
     {
     }
 
-    bool read_object(filesize_t offset, random_access_file& raf)
+    bool read_from_file(filesize_t offset, random_access_file& raf)
     {
         std::vector<uint8_t> block(block_size_, 0);
         if (!raf.read_data(offset, block))
@@ -79,7 +89,7 @@ public:
         return true;
     }
 
-    bool write_object(filesize_t offset, random_access_file& raf)
+    bool read_from_file(filesize_t offset, random_access_file& raf)
     {
         std::vector<uint8_t> block(block_size_, 0);
         auto it = block.begin();
@@ -158,9 +168,15 @@ public:
 
         auto it = block.begin();
         auto it2 = it + freelist_start_offset_.get_size();
-        freelist_start_offset_ = offset_ptr<free_list_node>({ it, it2 });
+        if (!freelist_start_offset_.read_from_span({ it, it2 }))
+        {
+            return false;
+        }
         auto it3 = it2 + freelist_end_offset_.get_size();
-        freelist_end_offset_ = offset_ptr<free_list_node>({ it2, it3 });
+        if (!freelist_end_offset_.read_from_span({ it2, it3 }))
+        {
+            return false;
+        }
         auto it4 = it3 + remaining_space.get_size();
         return remaining_space.read_from_span({ it3, it4 });
     }
@@ -171,9 +187,15 @@ public:
 
         auto it = block.begin();
         auto it2 = it + freelist_start_offset_.get_size();
-        freelist_start_offset_ = offset_ptr<free_list_node>({ it, it2 });
+        if (!freelist_start_offset_.write_to_span({ it, it2 }))
+        {
+            return false;
+        }
         auto it3 = it2 + freelist_end_offset_.get_size();
-        freelist_end_offset_ = offset_ptr<free_list_node>({ it2, it3 });
+        if (!freelist_end_offset_.write_to_span({ it2, it3 }))
+        {
+            return false;
+        }
         auto it4 = it3 + remaining_space.get_size();
         if (!remaining_space.write_to_span({ it3, it4 }))
         {
