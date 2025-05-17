@@ -102,7 +102,6 @@
   <ItemGroup>
     <ClCompile Include="free_list_tests.cpp" />
     <ClCompile Include="logging_btree_tests.cpp" />
-    <ClCompile Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
