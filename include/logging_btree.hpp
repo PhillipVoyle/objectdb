@@ -23,18 +23,18 @@ public:
 
     filesize_t get_offset() const;
 
-    bool read_node(filesize_t offset);
+    void read_node(filesize_t offset);
 
     int get_entry_size() const;
 
     int get_value_count() const;
 
-    bool write_node(filesize_t offset);
+    void write_node(filesize_t offset);
 
     filesize_t get_node_size() const;
 
-    bool get_key_at_n(int n, const std::span<uint8_t>& key) const;
-    bool get_value_at_n(int n, const std::span<uint8_t>& value) const;
+    void get_key_at_n(int n, const std::span<uint8_t>& key) const;
+    void get_value_at_n(int n, const std::span<uint8_t>& value) const;
 };
 
 class key_offset
@@ -77,16 +77,16 @@ protected:
 
     int get_maximum_value_count() const { return maximum_value_count; }
 
-    bool internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location);
+    void internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location);
 
-    bool insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset);
+    void insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset);
 
 public:
     logging_btree(const logging_btree_parameters& parameters);
-    bool create_empty_root_node(filesize_t offset, filesize_t& node_size);
+    void create_empty_root_node(filesize_t offset, filesize_t& node_size);
 
-    bool find_key(int root_offset, const std::span<uint8_t>& key, value_location& location);
-    bool insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset);
-    bool update_data_at_key(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
-    bool read_value_at_key(filesize_t root_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data);
+    void find_key(int root_offset, const std::span<uint8_t>& key, value_location& location);
+    void insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset);
+    void update_data_at_key(const value_location& location, const std::span<uint8_t>& key, const std::span<uint8_t>& data);
+    void read_value_at_key(filesize_t root_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data);
 };

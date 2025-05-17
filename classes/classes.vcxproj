@@ -19,16 +19,16 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
-    <ClInclude Include="..\include\flat_file.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
     <ClInclude Include="..\include\memory_random_access_file.hpp" />
+    <ClInclude Include="..\include\offset_ptr.hpp" />
     <ClInclude Include="..\include\random_access_file.hpp" />
     <ClInclude Include="..\include\std_random_access_file.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\file_object_allocator.cpp" />
-    <ClCompile Include="..\src\flat_file.cpp" />
     <ClCompile Include="..\src\logging_btree.cpp" />
     <ClCompile Include="..\src\random_access_file.cpp" />
     <ClCompile Include="..\src\std_random_access_file.cpp" />
