@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
     <ClInclude Include="..\include\memory_random_access_file.hpp" />

@@ -10,13 +10,13 @@ public:
     ~std_random_access_file();
 
     filesize_t get_file_size() override;
-    bool write_data(filesize_t offset, const std::span<uint8_t>& data) override;
-    bool read_data(filesize_t offset, const std::span<uint8_t>& data) override;
+    void write_data(filesize_t offset, const std::span<uint8_t>& data) override;
+    void read_data(filesize_t offset, const std::span<uint8_t>& data) override;
 
 private:
     std::fstream file_;
     std::string path_;
     bool is_open_ = false;
 
-    bool ensure_file_open();
+    void ensure_file_open();
 };

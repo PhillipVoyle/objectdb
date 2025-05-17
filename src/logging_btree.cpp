@@ -16,44 +16,32 @@ random_access_file& variable_btree_node::file()
     return _btree._file;
 }
 
-bool variable_btree_node::read_node(filesize_t offset)
+void variable_btree_node::read_node(filesize_t offset)
 {
     _offset = offset;
     auto current_offset = offset;
     uint32_t flags = 0;
-    if (!read_uint32(file(), current_offset, flags))
-    {
-        return false;
-    }
+    read_uint32(file(), current_offset, flags);
 
     _is_leaf = flags == 1;
     current_offset += 4;
 
-    if (!read_uint32(file(), current_offset, _key_size))
-    {
-        return false;
-    }
+    read_uint32(file(), current_offset, _key_size);
     current_offset += 4;
 
-    if (!read_uint32(file(), current_offset, _value_size))
-    {
-        return false;
-    }
+    read_uint32(file(), current_offset, _value_size);
 
     current_offset += 4;
 
     uint32_t value_count = 0;
-    if (!read_uint32(file(), current_offset, value_count))
-    {
-        return false;
-    }
+    read_uint32(file(), current_offset, value_count);
     current_offset += 4;
 
     auto data_size = (_value_size + _key_size) * value_count;
     _data.resize(data_size);
     _data.shrink_to_fit();
 
-    return file().read_data(current_offset, _data);
+    file().read_data(current_offset, _data);
 }
 
 int variable_btree_node::get_entry_size() const
@@ -67,7 +55,7 @@ int variable_btree_node::get_value_count() const
     return value_count;
 }
 
-bool variable_btree_node::write_node(filesize_t offset)
+void variable_btree_node::write_node(filesize_t offset)
 {
     _offset = offset; // todo: is this right?
     auto current_offset = offset;
@@ -76,38 +64,23 @@ bool variable_btree_node::write_node(filesize_t offset)
     {
         flags = 1;
     }
-    if (!write_uint32(file(), current_offset, flags))
-    {
-        return false;
-    }
+    write_uint32(file(), current_offset, flags);
 
     current_offset += 4;
 
-    if (!write_uint32(file(), current_offset, _key_size))
-    {
-        return false;
-    }
+    write_uint32(file(), current_offset, _key_size);
     current_offset += 4;
 
-    if (!write_uint32(file(), current_offset, _value_size))
-    {
-        return false;
-    }
+    write_uint32(file(), current_offset, _value_size);
 
     current_offset += 4;
 
     uint32_t value_count = get_value_count();
-    if (!write_uint32(file(), current_offset, value_count))
-    {
-        return false;
-    }
+    write_uint32(file(), current_offset, value_count);
 
     current_offset += 4;
 
-    if (!file().write_data(current_offset, _data))
-    {
-        return false;
-    }
+    file().write_data(current_offset, _data);
 
     if (!_btree.copy_on_write)
     {
@@ -118,14 +91,9 @@ bool variable_btree_node::write_node(filesize_t offset)
         if (remaining_count > 0)
         {
             std::vector<uint8_t> zero_fill(remaining_count * get_entry_size(), 0);
-            if (!file().write_data(current_offset + _data.size(), zero_fill))
-            {
-                return false;
-            }
+            file().write_data(current_offset + _data.size(), zero_fill);
         }
     }
-
-    return true;
 }
 
 filesize_t variable_btree_node::get_node_size() const
@@ -149,7 +117,7 @@ filesize_t variable_btree_node::get_node_size() const
     }
 }
 
-bool variable_btree_node::get_key_at_n(int n, const std::span<uint8_t>& key) const
+void variable_btree_node::get_key_at_n(int n, const std::span<uint8_t>& key) const
 {
     auto data_offset = get_entry_size() * n;
     auto value_offset = data_offset + _key_size;
@@ -158,11 +126,9 @@ bool variable_btree_node::get_key_at_n(int n, const std::span<uint8_t>& key) con
     assert(key.size() == _key_size);
 
     std::copy(_data.begin() + data_offset, _data.begin() + value_offset, key.begin());
-
-    return true;
 }
 
-bool variable_btree_node::get_value_at_n(int n, const std::span<uint8_t>& value) const
+void variable_btree_node::get_value_at_n(int n, const std::span<uint8_t>& value) const
 {
     auto data_offset = get_entry_size() * n;
     auto value_offset = data_offset + _key_size;
@@ -172,7 +138,6 @@ bool variable_btree_node::get_value_at_n(int n, const std::span<uint8_t>& value)
     assert(value.size() == _value_size);
 
     std::copy(_data.begin() + value_offset, _data.begin() + value_end_offset, value.begin());
-    return true;
 }
 
 int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b)
@@ -213,7 +178,7 @@ int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b)
     }
 }
 
-bool logging_btree::internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location)
+void logging_btree::internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location)
 {
     auto data_count = node.get_value_count();
     int prev_position = 0;
@@ -222,10 +187,7 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
     for (int n = 0; n < data_count; n++)
     {
         std::vector<uint8_t> key_at_n;
-        if (!node.get_key_at_n(n, key_at_n))
-        {
-            return false;
-        }
+        node.get_key_at_n(n, key_at_n);
         comparison = compare_span(key, key_at_n);
         if (comparison < 0)
         {
@@ -247,26 +209,19 @@ bool logging_btree::internal_find_key(variable_btree_node& node, const std::span
     if (!node._is_leaf)
     {
         std::vector<uint8_t> value_at_position(node._value_size);
-        if (!node.get_value_at_n(prev_position, value_at_position))
-        {
-            return false;
-        }
+        node.get_value_at_n(prev_position, value_at_position);
 
         if (value_at_position.size() == 8)
         {
             auto it = value_at_position.begin();
 
             filesize_t next_offset = 0;
-            if (!read_filesize(value_at_position, next_offset))
-            {
-                return 0;
-            }
+            read_filesize(value_at_position, next_offset);
 
             node.read_node(next_offset);
             return internal_find_key(node, key, location);
         }
     }
-    return true;
 }
 
 logging_btree::logging_btree(const logging_btree_parameters& parms) :
@@ -282,7 +237,7 @@ logging_btree::logging_btree(const logging_btree_parameters& parms) :
 /// <summary>
 /// this is the first node in the btree. Used only when creating a new btree.
 /// </summary>
-bool logging_btree::create_empty_root_node(filesize_t offset, filesize_t& node_size)
+void logging_btree::create_empty_root_node(filesize_t offset, filesize_t& node_size)
 {
     variable_btree_node node(*this);
     node._is_leaf = true;
@@ -290,26 +245,18 @@ bool logging_btree::create_empty_root_node(filesize_t offset, filesize_t& node_s
     node._value_size = value_size;
     node._data.resize(0);
     node._data.shrink_to_fit();
-    if (!node.write_node(offset))
-    {
-        return false;
-    }
+    node.write_node(offset);
     node_size = node.get_node_size();
-    return true;
 }
 
-bool logging_btree::find_key(int root_offset, const std::span<uint8_t>& key, value_location& location)
+void logging_btree::find_key(int root_offset, const std::span<uint8_t>& key, value_location& location)
 {
     variable_btree_node node(*this);
-    if (!node.read_node(root_offset))
-    {
-        return false;
-    }
-
-    return internal_find_key(node, key, location);
+    node.read_node(root_offset);
+    internal_find_key(node, key, location);
 }
 
-bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset)
+void logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, filesize_t& new_root_offset)
 {
     // Start recursive insert
     bool root_split = false;
@@ -319,10 +266,7 @@ bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<
     filesize_t current_node_offset = 0;
     new_root_offset = root_offset;
 
-    if (!insert_recursive(root_offset, key, data, root_split, new_node_key, new_node_offset,current_node_key, current_node_offset))
-    {
-        return false;
-    }
+    insert_recursive(root_offset, key, data, root_split, new_node_key, new_node_offset, current_node_key, current_node_offset);
 
     // If the root was split, we need to create a new root node
     if (root_split)
@@ -335,16 +279,10 @@ bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<
         new_root._data.resize(0);
 
         std::vector<uint8_t> current_offset(sizeof(filesize_t));
-        if (!write_filesize(current_offset, current_node_offset))
-        {
-            return false;
-        }
+        write_filesize(current_offset, current_node_offset);
 
         std::vector<uint8_t> new_offset_bytes(sizeof(filesize_t));
-        if (!write_filesize(new_offset_bytes, new_node_offset))
-        {
-            return false;
-        }
+        write_filesize(new_offset_bytes, new_node_offset);
 
         new_root._data.insert(new_root._data.end(), current_node_key.begin(), current_node_key.end());
         new_root._data.insert(new_root._data.end(), current_offset.begin(), current_offset.end());
@@ -355,19 +293,15 @@ bool logging_btree::insert_key_and_data(filesize_t root_offset, const std::span<
         new_root._data.shrink_to_fit();
 
         // Write the new root node to the file
-        if (!new_root.write_node(new_root_offset))
-        {
-            return false;
-        }
+        new_root.write_node(new_root_offset);
     }
-    return true;
 }
 
-bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset)
+void logging_btree::insert_recursive(filesize_t node_offset, const std::span<uint8_t>& key, const std::span<uint8_t>& data, bool& node_is_split, std::vector<uint8_t>& new_node_key, filesize_t& new_node_offset, std::vector<uint8_t>& current_node_key, filesize_t& current_node_offset)
 {
     node_is_split = false;
     variable_btree_node current_node(*this);
-    if (!current_node.read_node(node_offset)) return false;
+    current_node.read_node(node_offset);
     current_node_offset = node_offset;
 
     int count = current_node.get_value_count();
@@ -383,10 +317,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             break;
         }
         std::vector<uint8_t> key_at_position(current_node._key_size);
-        if (!current_node.get_key_at_n(insert_pos, key_at_position))
-        {
-            return false;
-        }
+        current_node.get_key_at_n(insert_pos, key_at_position);
         int comparison = compare_span(key, key_at_position);
 
         if (comparison < 0)
@@ -398,7 +329,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             // key already exists, we need to update the value
             if (is_leaf)
             {
-                return false;
+                throw object_db_exception("key already exists");
             }
         }
         insert_pos++;
@@ -432,30 +363,18 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             get_value_pos = count - 1;
         }
 
-        if (!current_node.get_value_at_n(get_value_pos, value_at_position))
-        {
-            return false;
-        }
+        current_node.get_value_at_n(get_value_pos, value_at_position);
         filesize_t next_offset = 0;
-        if (!read_filesize(value_at_position, next_offset))
-        {
-            return false;
-        }
+        read_filesize(value_at_position, next_offset);
 
         std::vector<uint8_t> key_at_position(current_node._key_size);
 
-        if (!current_node.get_key_at_n(get_value_pos, key_at_position))
-        {
-            return false;
-        }
+        current_node.get_key_at_n(get_value_pos, key_at_position);
 
         std::vector<uint8_t> child_node_key(current_node._key_size);
         filesize_t child_node_offset = 0;
 
-        if (!insert_recursive(next_offset, key, data, node_is_split, new_node_key, new_node_offset, child_node_key, child_node_offset))
-        {
-            return false;
-        }
+        insert_recursive(next_offset, key, data, node_is_split, new_node_key, new_node_offset, child_node_key, child_node_offset);
 
         if (node_is_split)
         {
@@ -463,10 +382,7 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             insert_value.resize(sizeof(filesize_t));
             insert_value_span = { insert_value };
             insert_key_span = { new_node_key };
-            if (!write_filesize(insert_value_span, new_node_offset))
-            {
-                return false;
-            }
+            write_filesize(insert_value_span, new_node_offset);
         }
 
         if (compare_span(child_node_key, key_at_position) != 0)
@@ -529,15 +445,8 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
 
             // Write both nodes back
             new_node_offset = _file.get_file_size();
-            if (!new_node.write_node(new_node_offset))
-            {
-                return false;
-            }
-
-            if (!current_node.write_node(node_offset))
-            {
-                return false;
-            }
+            new_node.write_node(new_node_offset);
+            current_node.write_node(node_offset);
 
             node_is_split = true;
         }
@@ -547,33 +456,27 @@ bool logging_btree::insert_recursive(filesize_t node_offset, const std::span<uin
             int offset = insert_pos * current_node.get_entry_size();
             current_node._data.insert(current_node._data.begin() + offset, key.begin(), key.end());
             current_node._data.insert(current_node._data.begin() + offset + current_node._key_size, insert_value_span.begin(), insert_value_span.end());
-            if (!current_node.write_node(node_offset))
-            {
-                return false;
-            }
+            current_node.write_node(node_offset);
         }
     }
     else if (updated_occurred)
     {
         // if we updated the key, we need to write the node back
-        if (!current_node.write_node(node_offset))
-        {
-            return false;
-        }
+        current_node.write_node(node_offset);
     }
 
     // this may tell the caller that it needs to update it's key for the current node
     current_node_key.resize(current_node._key_size);
     std::span<uint8_t> current_node_span{ current_node_key };
 
-    return current_node.get_key_at_n(0, current_node_span);
+    current_node.get_key_at_n(0, current_node_span);
 }
 
 
-bool logging_btree::read_value_at_key(filesize_t node_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data)
+void logging_btree::read_value_at_key(filesize_t node_offset, const std::span<uint8_t>& key, bool& found, std::vector<uint8_t>& data)
 {
     variable_btree_node current_node(*this);
-    if (!current_node.read_node(node_offset)) return false;
+    current_node.read_node(node_offset);
 
     found = false;
     int position = 0;
@@ -581,10 +484,7 @@ bool logging_btree::read_value_at_key(filesize_t node_offset, const std::span<ui
     for (position = 0; position < current_node.get_value_count(); position++)
     {
         std::vector<uint8_t> key_at_n(current_node._key_size);
-        if (!current_node.get_key_at_n(position, key_at_n))
-        {
-            return false;
-        }
+        current_node.get_key_at_n(position, key_at_n);
         auto comparison = compare_span(key, key_at_n);
 
         if (comparison < 0)
@@ -605,13 +505,9 @@ bool logging_btree::read_value_at_key(filesize_t node_offset, const std::span<ui
         if (found)
         {
             std::vector<uint8_t> value_at_n(current_node._value_size);
-            if (!current_node.get_value_at_n(position, value_at_n))
-            {
-                return false;
-            }
+            current_node.get_value_at_n(position, value_at_n);
             data.assign(value_at_n.begin(), value_at_n.end());
         }
-        return true;
     }
     else if (prev_position == -1)
     {
@@ -620,16 +516,9 @@ bool logging_btree::read_value_at_key(filesize_t node_offset, const std::span<ui
     else
     {
         std::vector<uint8_t> value_at_n(current_node._value_size);
-        if (!current_node.get_value_at_n(prev_position, value_at_n))
-        {
-            return false;
-        }
+        current_node.get_value_at_n(prev_position, value_at_n);
         filesize_t next_offset = 0;
-        if (!read_filesize(value_at_n, next_offset))
-        {
-            return false;
-        }
+        read_filesize(value_at_n, next_offset);
         return read_value_at_key(next_offset, key, found, data);
     }
-    return true;
 }

@@ -21,10 +21,10 @@ TEST(free_list_tests, alloc_free_alloc)
     filesize_t block_3 = 0;
     filesize_t block_4 = 0;
 
-    EXPECT_TRUE(foa.allocate_block(block_1));
-    EXPECT_TRUE(foa.allocate_block(block_2));
-    EXPECT_TRUE(foa.allocate_block(block_3));
-    EXPECT_TRUE(foa.allocate_block(block_4));
+    foa.allocate_block(block_1);
+    foa.allocate_block(block_2);
+    foa.allocate_block(block_3);
+    foa.allocate_block(block_4);
 
     EXPECT_EQ(48, block_1);
     EXPECT_EQ(96, block_2);
@@ -32,16 +32,16 @@ TEST(free_list_tests, alloc_free_alloc)
     EXPECT_EQ(192, block_4);
 
 
-    EXPECT_TRUE(foa.free_block(block_1));
-    EXPECT_TRUE(foa.free_block(block_2));
-    EXPECT_TRUE(foa.free_block(block_3));
+    foa.free_block(block_1);
+    foa.free_block(block_2);
+    foa.free_block(block_3);
 
     filesize_t block_5 = 0;
     filesize_t block_6 = 0;
     filesize_t block_7 = 0;
-    EXPECT_TRUE(foa.allocate_block(block_5));
-    EXPECT_TRUE(foa.allocate_block(block_6));
-    EXPECT_TRUE(foa.allocate_block(block_7));
+    foa.allocate_block(block_5);
+    foa.allocate_block(block_6);
+    foa.allocate_block(block_7);
 
     EXPECT_EQ(block_1, block_5);
     EXPECT_EQ(block_2, block_6);

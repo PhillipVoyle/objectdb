@@ -30,22 +30,34 @@ filesize_t std_random_access_file::get_file_size() {
     return size;
 }
 
-bool std_random_access_file::write_data(filesize_t offset, const std::span<uint8_t>& data) {
-    if (!is_open_) return false;
+void std_random_access_file::write_data(filesize_t offset, const std::span<uint8_t>& data) {
+    if (!is_open_) throw object_db_exception("File is not open");
 
     file_.seekp(offset, std::ios::beg);
-    if (!file_.good()) return false;
+    if (!file_.good()) throw object_db_exception("Failed to seek to offset");
 
     file_.write(reinterpret_cast<const char*>(data.data()), data.size());
-    return file_.good();
+    if (!file_.good())
+    {
+        throw object_db_exception("Failed to write data");
+    }
 }
 
-bool std_random_access_file::read_data(filesize_t offset, const std::span<uint8_t>& data) {
-    if (!is_open_) return false;
+void std_random_access_file::read_data(filesize_t offset, const std::span<uint8_t>& data) {
+    if (!is_open_)
+    {
+        throw object_db_exception("File is not open");
+    }
 
     file_.seekg(offset, std::ios::beg);
-    if (!file_.good()) return false;
+    if (!file_.good())
+    {
+        throw object_db_exception("Failed to seek to offset");
+    }
 
     file_.read(reinterpret_cast<char*>(data.data()), data.size());
-    return file_.good();
+    if (!file_.good())
+    {
+        throw object_db_exception("Failed to read data");
+    }
 }
