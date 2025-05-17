@@ -42,25 +42,25 @@ public:
         return offset_ == 0;
     }
 
-    bool read_from_span(const std::span<uint8_t>& s)
+    void read_from_span(const std::span<uint8_t>& s)
     {
-        return read_filesize(s, offset_);
+        read_filesize(s, offset_);
     }
 
-    bool write_to_span(const std::span<uint8_t>& s)
+    void write_to_span(const std::span<uint8_t>& s)
     {
-        return write_filesize(s, offset_);
+        write_filesize(s, offset_);
     }
 
     // I'm torn about having to write both file and span versions of these
-    bool read_object(random_access_file& raf, record_type& record)
+    void read_object(random_access_file& raf, record_type& record)
     {
-        return record.read(offset_, raf);
+        record.read(offset_, raf);
     }
 
-    bool write_object(random_access_file& raf, record_type& record const)
+    void write_object(random_access_file& raf, record_type& record const)
     {
-        return record.write(offset_, raf);
+        record.write(offset_, raf);
     }
 };
 
@@ -75,30 +75,23 @@ public:
     {
     }
 
-    bool read_from_file(filesize_t offset, random_access_file& raf)
+    void read_from_file(filesize_t offset, random_access_file& raf)
     {
         std::vector<uint8_t> block(block_size_, 0);
-        if (!raf.read_data(offset, block))
-        {
-            return false;
-        }
+        raf.read_data(offset, block);
 
         auto it = block.begin();
         auto it2 = it + next_ptr_.get_size();
         next_ptr_ = offset_ptr<free_list_node>({ it, it2 });
-        return true;
     }
 
-    bool read_from_file(filesize_t offset, random_access_file& raf)
+    void read_from_file(filesize_t offset, random_access_file& raf)
     {
         std::vector<uint8_t> block(block_size_, 0);
         auto it = block.begin();
         auto it2 = it + next_ptr_.get_size();
-        if (!write_filesize({ it, it2 }, next_ptr_.get_offset()))
-        {
-            return false;
-        }
-        return raf.write_data(offset, block);
+        write_filesize({ it, it2 }, next_ptr_.get_offset());
+        raf.write_data(offset, block);
     }
 };
 
@@ -109,14 +102,12 @@ public:
     {
     }
 
-    bool read_from_span(const std::span<uint8_t>& s) const
+    void read_from_span(const std::span<uint8_t>& s) const
     {
-        return true;
     }
 
-    bool write_to_span(const std::span<uint8_t>& s) const
+    void write_to_span(const std::span<uint8_t>& s) const
     {
-        return true;
     }
 };
 
@@ -158,7 +149,7 @@ public:
         freelist_end_offset = end;
     }
 
-    bool read_object(filesize_t offset, random_access_file& raf)
+    void read_object(filesize_t offset, random_access_file& raf)
     {
         std::vector<uint8_t> block(block_size_, 0);
         if (!raf.read_data(offset, block))
@@ -168,17 +159,11 @@ public:
 
         auto it = block.begin();
         auto it2 = it + freelist_start_offset_.get_size();
-        if (!freelist_start_offset_.read_from_span({ it, it2 }))
-        {
-            return false;
-        }
+        freelist_start_offset_.read_from_span({ it, it2 });
         auto it3 = it2 + freelist_end_offset_.get_size();
-        if (!freelist_end_offset_.read_from_span({ it2, it3 }))
-        {
-            return false;
-        }
+        freelist_end_offset_.read_from_span({ it2, it3 });
         auto it4 = it3 + remaining_space.get_size();
-        return remaining_space.read_from_span({ it3, it4 });
+        remaining_space.read_from_span({ it3, it4 });
     }
 
     bool write_object(filesize_t offset, random_access_file& raf)
@@ -187,21 +172,11 @@ public:
 
         auto it = block.begin();
         auto it2 = it + freelist_start_offset_.get_size();
-        if (!freelist_start_offset_.write_to_span({ it, it2 }))
-        {
-            return false;
-        }
+        freelist_start_offset_.write_to_span({ it, it2 });
         auto it3 = it2 + freelist_end_offset_.get_size();
-        if (!freelist_end_offset_.write_to_span({ it2, it3 }))
-        {
-            return false;
-        }
+        freelist_end_offset_.write_to_span({ it2, it3 });
         auto it4 = it3 + remaining_space.get_size();
-        if (!remaining_space.write_to_span({ it3, it4 }))
-        {
-            return false;
-        }
-
-        return raf.write_data(offset, block);
+        remaining_space.write_to_span({ it3, it4 });
+        raf.write_data(offset, block);
     }
 };
