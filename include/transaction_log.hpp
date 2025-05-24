@@ -3,30 +3,15 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <filesystem>
 
 #include "../include/core.hpp"
+#include "../include/transaction_log.hpp"
+#include "../include/offset_ptr.hpp"
+#include "../include/random_access_file.hpp"
+#include "../include/std_random_access_file.hpp"
 
-struct index_descriptor
-{
-    std::string name;
-    std::vector<int> field_references;
-};
-
-enum field_type
-{
-    ft_integer,
-    ft_bool,
-    ft_text,
-    ft_binary,
-    ft_date,
-    ft_real
-};
-
-struct field_descriptor
-{
-    std::string name;
-    uint64_t type_descriptor;
-};
+#include "../include/field_descriptor.hpp"
 
 enum index_type
 {
@@ -51,6 +36,7 @@ struct table_descriptor
 {
     std::vector<field_descriptor> fields;
     std::vector<index_descriptor> indexes;
+
 };
 
 struct field_adjustment
@@ -199,5 +185,8 @@ class transaction_log
 {
 public:
     virtual ~transaction_log() = default;
-    virtual std::shared_ptr<transaction> begin_transaction();
+    virtual std::shared_ptr<transaction> begin_transaction() = 0;
+
+    static std::shared_ptr<transaction_log> open(const std::filesystem::path& root_path);
 };
+
