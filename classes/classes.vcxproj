@@ -26,6 +26,7 @@
     <ClInclude Include="..\include\offset_ptr.hpp" />
     <ClInclude Include="..\include\random_access_file.hpp" />
     <ClInclude Include="..\include\std_random_access_file.hpp" />
+    <ClInclude Include="..\include\transaction_log.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\file_object_allocator.cpp" />
