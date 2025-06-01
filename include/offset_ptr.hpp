@@ -29,7 +29,7 @@ public:
 
     filesize_t get_size() const
     {
-        return sizeof(uint8_t);
+        return sizeof(filesize_t);
     }
 
     filesize_t get_offset() const
@@ -96,7 +96,7 @@ public:
 
     filesize_t get_size() const
     {
-        return sizeof(uint8_t) * 2;
+        return sizeof(filesize_t) * 2;
     }
 
     filesize_t get_filename()
