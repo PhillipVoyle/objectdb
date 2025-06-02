@@ -41,7 +41,7 @@ void field_descriptor::set_as_real(uint64_t integer_length_bytes, uint64_t fract
     {
         throw object_db_exception("integer_length_bytes or fraction_length_bytes exceeds maximum allowed value for real field");
     }
-    type_descriptor = ((integer_length_bytes << 30) | fraction_length_bytes) << 4 | ft_real;
+    type_descriptor = (((integer_length_bytes << 30) | fraction_length_bytes) << 4 )| ft_real;
 }
 
 void field_descriptor::set_as_float(uint64_t mantissa_length_bytes, uint64_t exponent_length_bytes)
@@ -51,7 +51,7 @@ void field_descriptor::set_as_float(uint64_t mantissa_length_bytes, uint64_t exp
     {
         throw object_db_exception("mantissa_length_bytes or exponent_length_bytes exceeds maximum allowed value for float field");
     }
-    type_descriptor = ((mantissa_length_bytes << 30) | exponent_length_bytes) << 4 | ft_float;
+    type_descriptor = (((mantissa_length_bytes << 30) | exponent_length_bytes) << 4) | ft_float;
 }
 
 
@@ -107,12 +107,12 @@ uint64_t field_descriptor::get_date_fraction_digits() const
 }
 std::pair<uint64_t, uint64_t> field_descriptor::get_real_lengths() const
 {
-    if (get_type() != ft_real)
+    auto type = get_type();
+    if ((type != ft_real) && (type != ft_float))
     {
         throw object_db_exception("field is not a real type");
     }
-    uint64_t lengths = get_length();
-    return { lengths >> 34, (lengths >> 4) & 0x3FFFFFFF }; // high 30 bits are integer length, lower 30 bits are fraction length  
+    return { type_descriptor >> 34, (type_descriptor >> 4) & 0x3FFFFFFF }; // high 30 bits are integer length, lower 30 bits are fraction length  
 }
 std::string field_descriptor::get_type_name() const
 {
@@ -129,7 +129,7 @@ std::string field_descriptor::get_type_name() const
     }
 }
 
-filesize_t field_descriptor::get_size() const
+filesize_t field_descriptor::get_size()
 {
     return sizeof(uint64_t) + max_string_length;
 }

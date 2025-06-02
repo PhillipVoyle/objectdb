@@ -59,7 +59,7 @@ struct field_descriptor
     std::pair<uint64_t, uint64_t> get_real_lengths() const;
     std::string get_type_name() const;
 
-    filesize_t get_size() const;
+    static filesize_t get_size();
     filesize_t get_field_width() const;
     void read_from_span(const std::span<uint8_t>& s);
     void write_to_span(const std::span<uint8_t>& s) const;
