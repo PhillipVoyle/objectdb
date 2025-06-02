@@ -22,6 +22,7 @@
     <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\field_descriptor.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
+    <ClInclude Include="..\include\table_descriptor.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
     <ClInclude Include="..\include\memory_random_access_file.hpp" />
     <ClInclude Include="..\include\offset_ptr.hpp" />
@@ -36,6 +37,7 @@
     <ClCompile Include="..\src\random_access_file.cpp" />
     <ClCompile Include="..\src\std_random_access_file.cpp" />
     <ClCompile Include="..\src\transaction_log.cpp" />
+    <ClCompile Include="table_descriptor.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

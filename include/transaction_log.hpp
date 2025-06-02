@@ -11,33 +11,7 @@
 #include "../include/random_access_file.hpp"
 #include "../include/std_random_access_file.hpp"
 
-#include "../include/field_descriptor.hpp"
-
-enum index_type
-{
-    primary_key,
-    unique_key,
-    foreign_key,
-    index,
-    reference_key
-};
-
-struct index_descriptor
-{
-    index_type type;
-    std::string name;
-    std::vector<int> local_field_references;
-    int remote_schema;
-    int remote_table_name;
-    std::vector<int> remote_schema_field_references;
-};
-
-struct table_descriptor
-{
-    std::vector<field_descriptor> fields;
-    std::vector<index_descriptor> indexes;
-
-};
+#include "../include/table_descriptor.hpp"
 
 struct field_adjustment
 {
