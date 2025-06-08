@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include "../include/transaction_log.hpp"
+#include "../include/index_node.hpp"
 
 int main()
 {

@@ -160,7 +160,6 @@ public:
     }
 };
 
-
 class free_list_node
 {
 public:
@@ -214,8 +213,6 @@ public:
         // no-op for null space
     }
 };
-
-
 
 template<typename remaining_space>
 class root_node
