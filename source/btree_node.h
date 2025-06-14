@@ -180,54 +180,83 @@ public:
         return calculate_entry_count_from_buffer_size() > 255;
     }
 
-    uint32_t upsert_entry(std::span<uint8_t> entry)
+    struct metadata
     {
-        std::span<uint8_t> new_key(entry.begin(), get_key_size());
-        int n = 0;
-        bool replace = false;
-        auto count = calculate_entry_count_from_buffer_size();
+        size_t header_size;
+        size_t key_size;
+        size_t value_size;
+        size_t entry_count;
+    };
+
+    struct find_result
+    {
+        uint32_t position;
+        bool found;
+    };
+
+    metadata get_metadata()
+    {
+        auto count = get_entry_count();
 
         size_t header_size = get_header_size();
         size_t key_size = get_key_size();
         size_t value_size = get_value_size();
 
-        size_t pair_size = static_cast<size_t>(key_size + value_size);
-        if (entry.size() != pair_size)
-        {
-            throw object_db_exception("expected an entry of correct size");
-        }
+        metadata result;
+        result.header_size = header_size;
+        result.key_size = key_size;
+        result.value_size = value_size;
+        result.entry_count = count;
 
+        return result;
+    }
+
+    find_result find_key(const metadata& md, std::span<uint8_t> key)
+    {
+        bool found = false;
+        int n;
         for (;;)
         {
-            if (n >= count)
+            if (n >=  md.entry_count)
             {
                 break;
             }
 
             std::span<uint8_t> key = get_key_at(n);
-            int cmp = compare_span(key, new_key);
+            int cmp = compare_span(key, key);
             if (cmp < 0)
             {
                 break;
             }
             else if (cmp == 0)
             {
-                replace = true;
+                found = true;
+                break;
             }
+            n++;
         }
+        find_result result;
+        result.position = n;
+        result.found = found;
+        return result;
+    }
 
-        size_t offset = header_size + n * pair_size;
+    void upsert_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry)
+    {
+        size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
+        size_t offset = md.header_size + fr.position * pair_size;
 
+        bool replace = fr.found;
         if (!replace)
         {
-            data.resize(data_offset + pair_size * (count + 1));
+            data.resize(data_offset + pair_size * (md.entry_count + 1));
             // Move existing data at and after the insert position back by one pair_size
-            if (n < count)
+            if (fr.position < md.entry_count)
             {
                 std::memmove(
                     data.data() + offset + pair_size,
                     data.data() + offset,
-                    (count - n) * pair_size
+                    (md.entry_count - fr.position) * pair_size
                 );
             }
 
@@ -237,7 +266,29 @@ public:
         std::copy(entry.begin(), entry.end(), destination);
 
         set_entry_count(calculate_entry_count_from_buffer_size());
-        return n;
+    }
+
+    uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace = true)
+    {
+        auto metadata = get_metadata();
+        size_t pair_size = static_cast<size_t>(metadata.key_size + metadata.value_size);
+        if (entry.size() != pair_size)
+        {
+            throw object_db_exception("expected an entry of correct size");
+        }
+        std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
+        auto fr = find_key(metadata, new_key);
+
+        bool replace = fr.found;
+        if (replace)
+        {
+            if (!allow_replace)
+            {
+                throw object_db_exception("disallowed replace");
+            }
+        }
+        upsert_entry(metadata, fr, entry);
+        return fr.position;
     }
 
     template<Binary_iterator It>
