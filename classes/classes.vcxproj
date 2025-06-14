@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\core.hpp" />
+    <ClInclude Include="..\include\far_offset_ptr.hpp" />
     <ClInclude Include="..\include\field_descriptor.hpp" />
     <ClInclude Include="..\include\binary_iterator.hpp" />
     <ClInclude Include="..\include\file_cache.hpp" />
@@ -33,6 +34,7 @@
     <ClInclude Include="..\include\random_access_file.hpp" />
     <ClInclude Include="..\include\std_random_access_file.hpp" />
     <ClInclude Include="..\include\transaction_log.hpp" />
+    <ClInclude Include="..\source\btree_node.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\source\file_cache.cpp" />

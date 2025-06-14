@@ -138,6 +138,12 @@
     <ClInclude Include="..\include\span_iterator.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\source\btree_node.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\far_offset_ptr.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\logging_btree.cpp">

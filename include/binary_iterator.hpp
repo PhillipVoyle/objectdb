@@ -138,3 +138,16 @@ void read_span(It& it, std::span<uint8_t> data) {
         b = it.read();
     }
 }
+
+// Write a filesize_t (uint64_t) to the iterator (little-endian)
+template<Binary_iterator It>
+void write_filesize(It& it, uint64_t value) {
+    write_uint64(it, value);
+}
+
+// Read a filesize_t (uint64_t) from the iterator (little-endian)
+template<Binary_iterator It>
+uint64_t read_filesize(It& it) {
+    return read_uint64(it);
+}
+
