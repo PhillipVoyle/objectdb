@@ -120,7 +120,7 @@ public:
     virtual filesize_t calculate_buffer_size()
     {
         filesize_t key_size = get_key_size();
-        filesize_t value_count = get_value_count();
+        filesize_t value_count = get_entry_count();
         filesize_t value_size = get_value_size();
 
         return value_count * (key_size + value_size);
