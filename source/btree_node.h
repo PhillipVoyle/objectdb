@@ -19,7 +19,7 @@ class btree_node
     * uint8_t: is_leaf_node (1 byte)
     * uint8_t: value_count (1 byte)
     * uint16_t: key size (2 bytes)
-    * uint32_t: value size (4 bytes) (this will be a value of 8 to accomodate a file_size_t for branch nodes)
+    * uint32_t: value size (4 bytes) (this will be a value of 16 to accomodate far_offset_ptr for branch nodes)
     * array of data
     * each is a key-value pair
     */
