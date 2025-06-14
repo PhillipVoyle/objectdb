@@ -21,7 +21,11 @@
   <ItemGroup>
     <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\field_descriptor.hpp" />
+    <ClInclude Include="..\include\binary_iterator.hpp" />
+    <ClInclude Include="..\include\file_cache.hpp" />
+    <ClInclude Include="..\include\file_iterator.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
+    <ClInclude Include="..\include\span_iterator.hpp" />
     <ClInclude Include="..\include\table_descriptor.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
     <ClInclude Include="..\include\memory_random_access_file.hpp" />
@@ -31,6 +35,9 @@
     <ClInclude Include="..\include\transaction_log.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\source\file_cache.cpp" />
+    <ClCompile Include="..\source\file_iterator.cpp" />
+    <ClCompile Include="..\source\span_iterator.cpp" />
     <ClCompile Include="..\src\field_descriptor.cpp" />
     <ClCompile Include="..\src\file_object_allocator.cpp" />
     <ClCompile Include="..\src\logging_btree.cpp" />

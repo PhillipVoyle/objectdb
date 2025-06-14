@@ -1,5 +1,10 @@
 #include <iostream>
 #include <filesystem>
+#include <map>
+#include <fstream>
+#include <cassert>
+
+#include "../include/core.hpp"
 #include "../include/transaction_log.hpp"
 #include "../include/index_node.hpp"
 
