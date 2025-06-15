@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\btree.hpp" />
     <ClInclude Include="..\include\btree_node.hpp" />
     <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\far_offset_ptr.hpp" />
@@ -37,6 +38,7 @@
     <ClInclude Include="..\include\transaction_log.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\btree.cpp" />
     <ClCompile Include="..\src\btree_node.cpp" />
     <ClCompile Include="..\src\core.cpp" />
     <ClCompile Include="..\src\field_descriptor.cpp" />
