@@ -140,43 +140,7 @@ void variable_btree_node::get_value_at_n(int n, const std::span<uint8_t>& value)
     std::copy(_data.begin() + value_offset, _data.begin() + value_end_offset, value.begin());
 }
 
-int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b)
-{
-    auto ita = a.begin();
-    auto itb = b.begin();
 
-    for (;;)
-    {
-        if (ita == a.end())
-        {
-            if (itb == b.end())
-            {
-                return 0;
-            }
-            else
-            {
-                return -1;
-            }
-        }
-        else if (itb == b.end())
-        {
-            return 1;
-        }
-        else if (*ita < *itb)
-        {
-            return -1;
-        }
-        else if (*itb < *ita)
-        {
-            return 1;
-        }
-        else// if (*itb == *ita)
-        {
-            ita++;
-            itb++;
-        }
-    }
-}
 
 void logging_btree::internal_find_key(variable_btree_node& node, const std::span<uint8_t>& key, value_location& location)
 {

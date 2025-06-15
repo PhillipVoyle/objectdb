@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\btree_node.hpp" />
     <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\far_offset_ptr.hpp" />
     <ClInclude Include="..\include\field_descriptor.hpp" />
@@ -34,16 +35,17 @@
     <ClInclude Include="..\include\random_access_file.hpp" />
     <ClInclude Include="..\include\std_random_access_file.hpp" />
     <ClInclude Include="..\include\transaction_log.hpp" />
-    <ClInclude Include="..\source\btree_node.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\source\file_cache.cpp" />
-    <ClCompile Include="..\source\file_iterator.cpp" />
-    <ClCompile Include="..\source\span_iterator.cpp" />
+    <ClCompile Include="..\src\btree_node.cpp" />
+    <ClCompile Include="..\src\core.cpp" />
     <ClCompile Include="..\src\field_descriptor.cpp" />
+    <ClCompile Include="..\src\file_cache.cpp" />
+    <ClCompile Include="..\src\file_iterator.cpp" />
     <ClCompile Include="..\src\file_object_allocator.cpp" />
     <ClCompile Include="..\src\logging_btree.cpp" />
     <ClCompile Include="..\src\random_access_file.cpp" />
+    <ClCompile Include="..\src\span_iterator.cpp" />
     <ClCompile Include="..\src\std_random_access_file.cpp" />
     <ClCompile Include="..\src\transaction_log.cpp" />
     <ClCompile Include="table_descriptor.cpp" />

@@ -18,3 +18,4 @@ public:
     }
 };
 
+int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b);
