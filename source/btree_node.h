@@ -170,7 +170,9 @@ public:
         size_t offset = header_size + n * pair_size + key_size;
 
         if (offset + value_size > data.size())
+        {
             throw std::out_of_range("Value index out of range");
+        }
 
         return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size));
     }
@@ -217,7 +219,7 @@ public:
         int n;
         for (;;)
         {
-            if (n >=  md.entry_count)
+            if (n >= md.entry_count)
             {
                 break;
             }
@@ -241,31 +243,63 @@ public:
         return result;
     }
 
-    void upsert_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry)
+    void insert_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry)
     {
         size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
         size_t offset = md.header_size + fr.position * pair_size;
-
-        bool replace = fr.found;
-        if (!replace)
+        data.resize(data_offset + pair_size * (md.entry_count + 1));
+        // Move existing data at and after the insert position back by one pair_size
+        if (fr.position < md.entry_count)
         {
-            data.resize(data_offset + pair_size * (md.entry_count + 1));
-            // Move existing data at and after the insert position back by one pair_size
-            if (fr.position < md.entry_count)
-            {
-                std::memmove(
-                    data.data() + offset + pair_size,
-                    data.data() + offset,
-                    (md.entry_count - fr.position) * pair_size
-                );
-            }
-
+            std::memmove(
+                data.data() + offset + pair_size,
+                data.data() + offset,
+                (md.entry_count - fr.position) * pair_size
+            );
         }
+        std::span<uint8_t> destination(data.begin() + offset, pair_size);
+        std::copy(entry.begin(), entry.end(), destination);
+
+        set_entry_count(calculate_entry_count_from_buffer_size());
+    }
+
+    void update_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry)
+    {
+        size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
+        size_t offset = md.header_size + fr.position * pair_size;
+        bool replace = fr.found;
 
         std::span<uint8_t> destination(data.begin() + offset, pair_size);
         std::copy(entry.begin(), entry.end(), destination);
 
         set_entry_count(calculate_entry_count_from_buffer_size());
+    }
+
+    bool remove_key(const metadata& md, const find_result& fr)
+    {
+        size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
+        size_t offset = md.header_size + fr.position * pair_size;
+        if (fr.position < (md.entry_count - 1))
+        {
+            std::memmove(
+                data.data() + offset,
+                data.data() + offset + pair_size,
+                (md.entry_count - fr.position - 1) * pair_size
+            );
+        }
+
+        data.resize(data_offset + pair_size * (md.entry_count - 1));
+    }
+
+    bool remove_key(std::span<uint8_t> key)
+    {
+        auto md = get_metadata();
+        auto fr = find_key(md, key);
+        if (fr.found)
+        {
+            remove_key(md, fr);
+        }
+        return fr.found;
     }
 
     uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace = true)
@@ -279,15 +313,18 @@ public:
         std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
         auto fr = find_key(metadata, new_key);
 
-        bool replace = fr.found;
-        if (replace)
+        if (fr.found)
         {
             if (!allow_replace)
             {
                 throw object_db_exception("disallowed replace");
             }
+            update_entry(metadata, fr, entry);
         }
-        upsert_entry(metadata, fr, entry);
+        else
+        {
+            insert_entry(metadata, fr, entry);
+        }
         return fr.position;
     }
 
