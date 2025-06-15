@@ -48,8 +48,37 @@ btree_iterator btree::remove(btree_iterator it)
 
 btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key)
 {
-    throw object_db_exception("not implemented");
+    btree_iterator result;
+    btree_node node;
+    auto current_offset = btree_offset;
+    for (;;)
+    {
+        auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        node.read(iterator);
+        auto md = node.get_metadata();
+        auto find_result = node.find_key(md, key);
+        btree_node_info info;
+        info.node_offset = current_offset;
+        info.btree_position = find_result.position;
+        info.found = find_result.found;
+        auto span = node.get_key_at(find_result.position);
+        info.key.resize(span.size());
+        std::copy(span.begin(), span.end(), info.key.begin());
+
+        result.path.push_back(info);
+
+        if (node.is_leaf())
+        {
+            break;
+        }
+        else
+        {
+            node.get_value_at(find_result.position);
+        }
+    }
+    return result;
 }
+
 btree_iterator btree_operations::seek_end(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key)
 {
     throw object_db_exception("not implemented");
