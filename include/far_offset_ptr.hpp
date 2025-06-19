@@ -28,6 +28,8 @@ public:
         other.offset = 0;
     }
 
+    bool operator==(const far_offset_ptr& other) const = default;
+
     // Copy assignment
     far_offset_ptr& operator=(const far_offset_ptr& other)
     {
