@@ -1,5 +1,6 @@
 
 #include "../include/btree.hpp"
+#include "../include/span_iterator.hpp"
 #include <cassert>
 
 btree::btree(file_cache& cache, far_offset_ptr offset) : cache_(cache), offset_(offset)
@@ -12,7 +13,7 @@ btree_iterator btree::begin()
 
 btree_iterator btree::end()
 {
-    return btree_operations::begin(cache_, offset_);
+    return btree_operations::end(cache_, offset_);
 }
 
 btree_iterator btree::seek_begin(std::span<uint8_t> key)
@@ -34,9 +35,9 @@ btree_iterator btree::prev(btree_iterator it)
     return btree_operations::prev(cache_, offset_, it);
 }
 
-btree_iterator btree::upsert(std::span<uint8_t> entry)
+btree_iterator btree::upsert(std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::upsert(cache_, offset_, entry);
+    return btree_operations::upsert(cache_, offset_, key, value);
 }
 
 std::vector<uint8_t> btree::get_entry(btree_iterator it)
@@ -44,13 +45,13 @@ std::vector<uint8_t> btree::get_entry(btree_iterator it)
     return btree_operations::get_entry(cache_, it);
 }
 
-btree_iterator btree::insert(btree_iterator it, std::span<uint8_t> entry)
+btree_iterator btree::insert(btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::insert(cache_, it, entry);
+    return btree_operations::insert(cache_, it, key, value);
 }
-btree_iterator btree::update(btree_iterator it, std::span<uint8_t> entry)
+btree_iterator btree::update(btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::update(cache_, it, entry);
+    return btree_operations::update(cache_, it, key, value);
 }
 btree_iterator btree::remove(btree_iterator it)
 {
@@ -71,14 +72,15 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
         btree_node_info info;
         info.node_offset = current_offset;
         info.btree_position = 0;
-        info.found = 0;
+        info.is_found = 0;
         if (node.get_entry_count() > 0)
         {
-            info.found = 1;
+            info.is_found = 1;
+            info.is_full = node.is_full();
         }
         else
         {
-            info.found = 0;
+            info.is_found = 0;
             return result; // empty btree
         }
 
@@ -100,10 +102,37 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
     return result;
 }
 
-btree_iterator btree_operations::end(far_offset_ptr btree_offset)
+btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_offset)
 {
     btree_iterator result;
     result.btree_offset = btree_offset;
+
+    far_offset_ptr current_offset = btree_offset;
+
+    for (;;)
+    {
+        btree_node node;
+        auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        node.read(iterator);
+        btree_node_info info;
+        info.node_offset = current_offset;
+        info.btree_position = node.get_entry_count(); // Position after the last entry
+        info.is_found = false; // End iterator does not point to a valid entry
+        info.is_full = node.is_full();
+        result.path.push_back(info);
+        if (node.is_leaf())
+        {
+            break;
+        }
+        else
+        {
+            // Move to the rightmost child
+            auto child_offset_span = node.get_value_at(node.get_entry_count());
+            auto it = span_iterator(child_offset_span);
+            current_offset.read(it);
+        }
+    }
+
     return result;
 }
 
@@ -115,13 +144,27 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
     for (;;)
     {
         auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        if (!iterator.has_next())
+        {
+            if (result.path.empty())
+            {
+                result.btree_offset = btree_offset;
+                result.path.clear();
+                return result; // Empty B-tree
+            }
+            else
+            {
+                throw object_db_exception("B-tree node is empty or corrupted.");
+            }
+        }
         node.read(iterator);
         auto md = node.get_metadata();
         auto find_result = node.find_key(md, key);
         btree_node_info info;
         info.node_offset = current_offset;
         info.btree_position = find_result.position;
-        info.found = find_result.found;
+        info.is_found = find_result.found;
+        info.is_full = node.is_full();
         auto span = node.get_key_at(find_result.position);
         info.key.resize(span.size());
         std::copy(span.begin(), span.end(), info.key.begin());
@@ -134,7 +177,9 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
         }
         else
         {
-            node.get_value_at(find_result.position);
+            auto offset_span = node.get_value_at(find_result.position);
+            auto span_it = span_iterator(offset_span);
+            current_offset.read(span_it);
         }
     }
     return result;
@@ -148,7 +193,7 @@ btree_iterator btree_operations::seek_end(file_cache& cache, far_offset_ptr btre
         return it; // If the key is not found, return end iterator
     }
     // Move to the next entry if the key is found
-    if (it.path.back().found)
+    if (it.path.back().is_found)
     {
         // Move to the next entry in the B-tree
         it = next(cache, btree_offset, it);
@@ -165,7 +210,7 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
     // If iterator is at end, return end iterator
     if (result.is_end()) 
     {
-        return end(btree_offset);
+        return end(cache, btree_offset);
     }
     // Traverse up the path to find a node with a next entry
     while (!result.path.empty())
@@ -181,7 +226,8 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
             // Update key in leaf node
             auto key_span = node.get_key_at(info.btree_position);
             info.key.assign(key_span.begin(), key_span.end());
-            info.found = true;
+            info.is_found = true;
+            info.is_full = node.is_full();
             return result;
         }
         else
@@ -191,7 +237,7 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
         }
     }
     // If we reach here, there is no next entry (we were at the last entry)
-    return end(btree_offset);
+    return end(cache, btree_offset);
 }
 btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it)
 {
@@ -214,10 +260,11 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
             btree_node_info info;
             info.node_offset = current_offset;
             info.btree_position = node.get_entry_count() ? node.get_entry_count() - 1 : 0;
-            info.found = node.get_entry_count() > 0;
-            if (!info.found)
+            info.is_found = node.get_entry_count() > 0;
+            info.is_full = node.is_full();
+            if (!info.is_found)
             {
-                return end(btree_offset);
+                return end(cache, btree_offset);
             }
             auto key_span = node.get_key_at(info.btree_position);
             info.key.assign(key_span.begin(), key_span.end());
@@ -254,7 +301,8 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
                 btree_node_info child_info;
                 child_info.node_offset = child_offset;
                 child_info.btree_position = node.get_entry_count() - 1;
-                child_info.found = true;
+                child_info.is_found = true;
+                child_info.is_full = node.is_full();
                 auto key_span = node.get_key_at(node.get_entry_count() - 1);
                 child_info.key.assign(key_span.begin(), key_span.end());
                 result.path.push_back(child_info);
@@ -268,7 +316,8 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
             btree_node_info& leaf_info = result.path.back();
             auto key_span = node.get_key_at(leaf_info.btree_position);
             leaf_info.key.assign(key_span.begin(), key_span.end());
-            leaf_info.found = true;
+            leaf_info.is_found = true;
+            leaf_info.is_full = node.is_full();
             return result;
         } else {
             // No previous entry in this node, move up
@@ -280,18 +329,18 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
     return btree_iterator{};
 }
 
-btree_iterator btree_operations::upsert(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> entry)
+btree_iterator btree_operations::upsert(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    btree_iterator it = seek_begin(cache, btree_offset, entry);
-    if (it.is_end() || !it.path.back().found)
+    btree_iterator it = seek_begin(cache, btree_offset, key);
+    if (it.is_end() || !it.path.back().is_found)
     {
         // If the key is not found, we need to insert it
-        return insert(cache, it, entry);
+        return insert(cache, it, key, value);
     }
     else
     {
         // If the key is found, we can update it
-        return update(cache, it, entry);
+        return update(cache, it, key, value);
     }
 }
 
@@ -305,7 +354,7 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
     {
         throw object_db_exception("Iterator path is empty, cannot get entry.");
     }
-    if (it.path.back().found)
+    if (it.path.back().is_found)
     {
         btree_node node;
         auto iterator = cache.get_iterator(it.path.back().node_offset.get_file_id(), it.path.back().node_offset.get_offset());
@@ -329,26 +378,27 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
 //    uint64_t btree_node::get_transaction_id();
 //    void btree_node::set_transaction_id(uint64_t transaction_id);
 
-btree_iterator btree_operations::insert(file_cache& cache, btree_iterator it, std::span<uint8_t> entry)
+btree_iterator btree_operations::insert(file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
+    bool need_to_split = false;
+    btree_node node;
     if (it.is_end())
     {
-        auto btree_offset = it.btree_offset;
-        // If the iterator is at end, we need to insert at the end of the B-tree
-        btree_node node;
-        auto iterator = cache.get_iterator(btree_offset.get_file_id(), btree_offset.get_offset());
-        node.read(iterator);
-        // Check if the node is full, if so we need to split it
-        if (node.is_full())
+        auto last = prev(cache, it.btree_offset, it);
+        if (last.is_end())
         {
-            // Split the node and create a new root if necessary
-            // This is a complex operation that involves splitting the node and updating the B-tree structure
-            throw object_db_exception("B-tree node split not implemented yet.");
+            node.init_leaf();
+            auto md = node.get_metadata();
+        }
+        else
+        {
+            it = last;
         }
     }
+
     throw object_db_exception("not implemented");
 }
-btree_iterator btree_operations::update(file_cache& cache, btree_iterator it, std::span<uint8_t> entry)
+btree_iterator btree_operations::update(file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
     throw object_db_exception("not implemented");
 }

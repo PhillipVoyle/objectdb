@@ -26,9 +26,12 @@ public:
     file_cache(const file_cache&) = delete;
     file_cache& operator=(const file_cache&) = delete;
 
-    filesize_t get_file_size(filesize_t file_id);  
-    void write(filesize_t file_id, filesize_t offset, uint8_t data);  
-    uint8_t read(filesize_t file_id, filesize_t offset);  
+    filesize_t get_file_size(filesize_t file_id);
+    void write(filesize_t file_id, filesize_t offset, uint8_t data);
+    uint8_t read(filesize_t file_id, filesize_t offset);
 
-    file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0);  
+    file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0);
+
+    file_iterator begin_transaction();
+    file_iterator allocate_block(filesize_t transaction_id);
 };

@@ -128,6 +128,11 @@ bool btree_node::should_split()
     return calculate_entry_count_from_buffer_size() > 255;
 }
 
+bool btree_node::is_full()
+{
+    return calculate_entry_count_from_buffer_size() >= 255;
+}
+
 btree_node::metadata btree_node::get_metadata()
 {
     auto count = get_entry_count();

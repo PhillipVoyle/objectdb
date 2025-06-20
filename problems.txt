@@ -1,0 +1,4 @@
+ * allocating new files
+ * deleting files
+ * compacting files
+ * determining transaction status

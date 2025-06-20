@@ -84,6 +84,8 @@ public:
     bool should_split();
     bool is_full();
 
+    void init_leaf();
+
     metadata get_metadata();
 
     find_result find_key(const metadata& md, std::span<uint8_t> key);
