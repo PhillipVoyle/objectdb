@@ -37,12 +37,25 @@ far_offset_ptr file_allocator::allocate_block(filesize_t transaction_id)
 
     auto tmp_last_file_iterator = transaction_file_iterator;
     auto last_file = read_uint64(tmp_last_file_iterator);
-    auto size = cache_.get_file_size(last_file);
-    if (size >= block_file_size)
+
+    auto last_file_transaction_id_iterator = cache_.get_iterator(last_file, 0);
+    auto last_file_transaction_id = read_filesize(last_file_transaction_id_iterator);
+
+    uint64_t size = 0;
+    if (last_file_transaction_id != transaction_id)
     {
         last_file = last_file + 1;
         write_uint64(transaction_file_iterator, last_file);
-        size = 0;
+    }
+    else
+    {
+        size = cache_.get_file_size(last_file);
+        if (size >= block_file_size)
+        {
+            last_file = last_file + 1;
+            write_uint64(transaction_file_iterator, last_file);
+            size = 0;
+        }
     }
 
     auto it = cache_.get_iterator(last_file, size);
