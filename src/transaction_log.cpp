@@ -11,8 +11,6 @@
 #include "../include/offset_ptr.hpp"
 #include "../include/random_access_file.hpp"
 
-static const filesize_t block_size = 4096; // 4KB block size
-
 std::string calculate_filename(uint64_t filename)
 {
     std::stringstream ss;

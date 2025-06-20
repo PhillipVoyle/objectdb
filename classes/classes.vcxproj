@@ -25,9 +25,11 @@
     <ClInclude Include="..\include\far_offset_ptr.hpp" />
     <ClInclude Include="..\include\field_descriptor.hpp" />
     <ClInclude Include="..\include\binary_iterator.hpp" />
+    <ClInclude Include="..\include\file_allocator.hpp" />
     <ClInclude Include="..\include\file_cache.hpp" />
     <ClInclude Include="..\include\file_iterator.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
+    <ClInclude Include="..\include\index_node.hpp" />
     <ClInclude Include="..\include\span_iterator.hpp" />
     <ClInclude Include="..\include\table_descriptor.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
@@ -49,8 +51,9 @@
     <ClCompile Include="..\src\random_access_file.cpp" />
     <ClCompile Include="..\src\span_iterator.cpp" />
     <ClCompile Include="..\src\std_random_access_file.cpp" />
+    <ClCompile Include="..\src\file_allocator.cpp" />
+    <ClCompile Include="..\src\table_descriptor.cpp" />
     <ClCompile Include="..\src\transaction_log.cpp" />
-    <ClCompile Include="table_descriptor.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

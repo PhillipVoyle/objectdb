@@ -18,6 +18,7 @@ class file_cache
     void evict_if_needed(); // Evict the least recently used file if needed
     std::fstream& get_stream(filesize_t file_id, std::ios::openmode mode);
     static std::string get_filename(const std::filesystem::path& cache_path, filesize_t file_id);
+
 public:
     file_cache(const std::filesystem::path& path) : cache_path(path) {}
     ~file_cache() = default;
@@ -31,7 +32,4 @@ public:
     uint8_t read(filesize_t file_id, filesize_t offset);
 
     file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0);
-
-    file_iterator begin_transaction();
-    file_iterator allocate_block(filesize_t transaction_id);
 };
