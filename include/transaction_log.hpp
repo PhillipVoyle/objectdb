@@ -7,7 +7,7 @@
 
 #include "../include/core.hpp"
 #include "../include/transaction_log.hpp"
-#include "../include/offset_ptr.hpp"
+//#include "../include/offset_ptr.hpp"
 #include "../include/random_access_file.hpp"
 #include "../include/std_random_access_file.hpp"
 

@@ -6,8 +6,9 @@
 
 #include "../include/core.hpp"
 #include "../include/transaction_log.hpp"
-#include "../include/index_node.hpp"
+//#include "../include/index_node.hpp"
 #include "../include/file_cache.hpp"
+#include "../include/file_allocator.hpp"
 
 int main()
 {
@@ -32,7 +33,12 @@ int main()
     auto db_path = path / "db";
     std::filesystem::create_directories(db_path);
     file_cache cache(db_path);
+    file_allocator allocator(cache);
 
-
+    auto xn = allocator.create_transaction();
+    for (int a = 0; a < 10; a++)
+    {
+        auto block_ptr = allocator.allocate_block(xn);
+    }
     return 0;
 }

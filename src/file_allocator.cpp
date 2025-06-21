@@ -10,20 +10,50 @@ file_allocator::file_allocator(file_cache& cache) : cache_(cache)
 {
 }
 
-filesize_t file_allocator::create_transaction()
+filesize_t file_allocator::get_current_transaction_id()
 {
-    filesize_t transaction_id = 1;
+    filesize_t transaction_id = 0;
     std::vector<uint8_t> node(block_size, 0);
     auto root_file_iterator = cache_.get_iterator(0, transaction_id_offset);
-    if (cache_.get_file_size(0) >= block_size)
+
+    if (cache_.get_file_size(0) >= block_size) // does the block exist on file?
     {
+        // load the current value
         auto current_iterator = root_file_iterator;
         read_span(current_iterator, node);
         span_iterator root_block_iterator(node);
         transaction_id = read_filesize(root_block_iterator);
     }
+    else // we need to initialise the block with a default state
+    {
+        // write to the block in memory
+        span_iterator root_block_iterator(node);
+        write_uint64(root_block_iterator, transaction_id);
 
+        // write the block to the file
+        write_span(root_file_iterator, node);
+        return transaction_id;
+    }
+
+    return transaction_id;
+}
+
+filesize_t file_allocator::create_transaction()
+{
+    auto transaction_id = get_current_transaction_id();
+
+    std::vector<uint8_t> node(block_size, 0);
+
+    auto root_file_iterator = cache_.get_iterator(0, transaction_id_offset);
+    read_span(root_file_iterator, node);
+
+    auto span_it = span_iterator(node);
+    transaction_id++;
+    write_uint64(span_it, transaction_id);
+
+    root_file_iterator = cache_.get_iterator(0, transaction_id_offset);
     write_span(root_file_iterator, node);
+
     return transaction_id;
 }
 
@@ -42,7 +72,7 @@ far_offset_ptr file_allocator::allocate_block(filesize_t transaction_id)
     auto last_file_transaction_id = read_filesize(last_file_transaction_id_iterator);
 
     uint64_t size = 0;
-    if (last_file_transaction_id != transaction_id)
+    if (last_file == 0 || last_file_transaction_id != transaction_id)
     {
         last_file = last_file + 1;
         write_uint64(transaction_file_iterator, last_file);
@@ -60,6 +90,9 @@ far_offset_ptr file_allocator::allocate_block(filesize_t transaction_id)
 
     auto it = cache_.get_iterator(last_file, size);
     std::vector<uint8_t> block(block_size, 0);
+    auto span_it = span_iterator(block);
+
+    write_filesize(span_it, transaction_id);
     write_span(it, block);
 
     return far_offset_ptr(last_file, size);
