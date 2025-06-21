@@ -19,19 +19,40 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\btree.hpp" />
+    <ClInclude Include="..\include\btree_node.hpp" />
     <ClInclude Include="..\include\core.hpp" />
+    <ClInclude Include="..\include\far_offset_ptr.hpp" />
+    <ClInclude Include="..\include\field_descriptor.hpp" />
+    <ClInclude Include="..\include\binary_iterator.hpp" />
+    <ClInclude Include="..\include\file_allocator.hpp" />
+    <ClInclude Include="..\include\file_cache.hpp" />
+    <ClInclude Include="..\include\file_iterator.hpp" />
     <ClInclude Include="..\include\file_object_allocator.hpp" />
+    <ClInclude Include="..\include\index_node.hpp" />
+    <ClInclude Include="..\include\span_iterator.hpp" />
+    <ClInclude Include="..\include\table_descriptor.hpp" />
     <ClInclude Include="..\include\logging_btree.hpp" />
     <ClInclude Include="..\include\memory_random_access_file.hpp" />
     <ClInclude Include="..\include\offset_ptr.hpp" />
     <ClInclude Include="..\include\random_access_file.hpp" />
     <ClInclude Include="..\include\std_random_access_file.hpp" />
+    <ClInclude Include="..\include\transaction_log.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\btree.cpp" />
+    <ClCompile Include="..\src\btree_node.cpp" />
+    <ClCompile Include="..\src\core.cpp" />
+    <ClCompile Include="..\src\field_descriptor.cpp" />
+    <ClCompile Include="..\src\file_cache.cpp" />
+    <ClCompile Include="..\src\file_iterator.cpp" />
     <ClCompile Include="..\src\file_object_allocator.cpp" />
     <ClCompile Include="..\src\logging_btree.cpp" />
     <ClCompile Include="..\src\random_access_file.cpp" />
+    <ClCompile Include="..\src\span_iterator.cpp" />
     <ClCompile Include="..\src\std_random_access_file.cpp" />
+    <ClCompile Include="..\src\file_allocator.cpp" />
+    <ClCompile Include="..\src\table_descriptor.cpp" />
     <ClCompile Include="..\src\transaction_log.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

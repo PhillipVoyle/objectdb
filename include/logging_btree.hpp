@@ -51,8 +51,6 @@ public:
     std::vector<key_offset> best_value_position;
 };
 
-int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b);
-
 class logging_btree_parameters
 {
 public:
