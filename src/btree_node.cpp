@@ -265,3 +265,49 @@ uint32_t btree_node::upsert_entry(std::span<uint8_t> entry, bool allow_replace)
     return fr.position;
 }
 
+void btree_node::init_leaf()
+{
+    data.resize(data_offset + get_header_size());
+    data[flags_offset] |= is_leaf_bit_mask; // Set the leaf bit
+    set_key_size(0);
+    set_value_size(0);
+    set_entry_count(0);
+    set_transaction_id(0);
+}
+
+void btree_node::split(btree_node& overflow_node)
+{
+    // determine the median
+    auto md = get_metadata();
+    auto count = md.entry_count;
+    auto half_way = (uint32_t) (count / 2);
+
+    overflow_node.data[flags_offset] = data[flags_offset];
+    overflow_node.set_key_size(md.key_size);
+    overflow_node.set_value_size(md.value_size);
+    overflow_node.set_entry_count((int16_t)(count - half_way));
+
+    auto ofn_md = overflow_node.get_metadata();
+
+    uint32_t position = 0;
+    for (uint32_t i = half_way; i < count; i++)
+    {
+        std::vector<uint8_t> entry(md.key_size + md.value_size);
+
+        span_iterator it{ entry };
+        write_span(it, get_key_at(i));
+        write_span(it, get_value_at(i));
+
+        auto fr = find_result{
+            .position = position,
+            .found = true,
+        };
+        overflow_node.update_entry(ofn_md, fr, entry);
+
+        position++;
+    }
+
+    set_entry_count((uint16_t)(half_way));
+}
+
+

@@ -3,7 +3,7 @@
 #include "../include/span_iterator.hpp"
 #include <cassert>
 
-btree::btree(file_cache& cache, far_offset_ptr offset) : cache_(cache), offset_(offset)
+btree::btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator) : cache_(cache), offset_(offset), allocator_(allocator)
 {
 }
 btree_iterator btree::begin()
@@ -35,9 +35,9 @@ btree_iterator btree::prev(btree_iterator it)
     return btree_operations::prev(cache_, offset_, it);
 }
 
-btree_iterator btree::upsert(std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree::upsert(filesize_t transaction_id, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::upsert(cache_, offset_, key, value);
+    return btree_operations::upsert(transaction_id, allocator_, cache_, offset_, key, value);
 }
 
 std::vector<uint8_t> btree::get_entry(btree_iterator it)
@@ -45,17 +45,17 @@ std::vector<uint8_t> btree::get_entry(btree_iterator it)
     return btree_operations::get_entry(cache_, it);
 }
 
-btree_iterator btree::insert(btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree::insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::insert(cache_, it, key, value);
+    return btree_operations::insert(transaction_id, allocator_, cache_, it, key, value);
 }
-btree_iterator btree::update(btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree::update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    return btree_operations::update(cache_, it, key, value);
+    return btree_operations::update(transaction_id, allocator_, cache_, it, key, value);
 }
-btree_iterator btree::remove(btree_iterator it)
+btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
 {
-    return btree_operations::remove(cache_, it);
+    return btree_operations::remove(transaction_id, allocator_, cache_, it);
 }
 
 btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_offset)
@@ -329,18 +329,18 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
     return btree_iterator{};
 }
 
-btree_iterator btree_operations::upsert(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree_operations::upsert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, std::span<uint8_t> value)
 {
     btree_iterator it = seek_begin(cache, btree_offset, key);
     if (it.is_end() || !it.path.back().is_found)
     {
         // If the key is not found, we need to insert it
-        return insert(cache, it, key, value);
+        return insert(transaction_id, allocator, cache, it, key, value);
     }
     else
     {
         // If the key is found, we can update it
-        return update(cache, it, key, value);
+        return update(transaction_id, allocator, cache, it, key, value);
     }
 }
 
@@ -378,31 +378,229 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
 //    uint64_t btree_node::get_transaction_id();
 //    void btree_node::set_transaction_id(uint64_t transaction_id);
 
-btree_iterator btree_operations::insert(file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    bool need_to_split = false;
-    btree_node node;
     if (it.is_end())
     {
-        auto last = prev(cache, it.btree_offset, it);
-        if (last.is_end())
+        throw object_db_exception("cannot insert past end of index");
+    }
+    btree_iterator current = it;
+    btree_iterator result = it;
+    far_offset_ptr new_or_current_node_offset;
+    far_offset_ptr insert_offset;
+    bool insert_needed = false;
+
+    if (current.path.empty())
+    {
+        // this is an empty btree
+        btree_node node;
+        node.init_leaf();
+        node.set_key_size(key.size());
+        node.set_value_size(value.size());
+        auto medatada = node.get_metadata();
+        auto find_result = btree_node::find_result{
+            .position = 0, // We will insert at the beginning
+            .found = false // We are inserting a new key
+        };
+
+        std::vector<uint8_t> new_entry(key.size() + value.size());
+        std::copy(key.begin(), key.end(), new_entry.begin());
+        std::copy(value.begin(), value.end(), new_entry.begin() + key.size());
+
+        node.insert_entry(medatada, find_result, new_entry);
+        node.set_transaction_id(transaction_id);
+        new_or_current_node_offset = allocator.allocate_block(transaction_id);
+        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        node.write(write_it);
+        btree_node_info info;
+        info.node_offset = new_or_current_node_offset;
+        info.btree_position = 0; // We inserted at the beginning
+        info.is_found = true; // We found the entry we just inserted
+        info.is_full = node.is_full();
+        info.key.assign(key.begin(), key.end()); // Store the key we just inserted
+        current.path.push_back(info);
+        result = current; // The result is the same as the current iterator
+        return result;
+    }
+
+    bool expect_leaf = true;
+    while (!current.path.empty())
+    {
+        auto node_info = current.path.back();
+        if (!node_info.is_found)
         {
-            node.init_leaf();
-            auto md = node.get_metadata();
+            throw object_db_exception("Key not found in the B-tree, cannot insert entry.");
+        }
+        int path_position = node_info.btree_position;
+        auto offset = node_info.node_offset;
+        current.path.pop_back();
+        btree_node node;
+        auto iterator = cache.get_iterator(offset.get_file_id(), offset.get_offset());
+        node.read(iterator);
+        auto md = node.get_metadata();
+        auto find_result = node.find_key(md, node_info.key);
+        if (node.is_leaf())
+        {
+            if (!expect_leaf)
+            {
+                throw object_db_exception("unexpected leaf node");
+            }
+            // Insert the entry in the current node
+            std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
+            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
+            std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
+
+            node.insert_entry(md, find_result, new_entry);
         }
         else
         {
-            it = last;
+            if (!expect_leaf)
+            {
+                throw object_db_exception("unexpected branch node");
+            }
+
+            auto span = node.get_value_at(find_result.position);
+            std::vector<uint8_t> {span.begin(), span.end() };
+
+            std::vector<uint8_t> new_node_value(md.value_size);
+            auto new_node_value_span_iterator = span_iterator{ new_node_value };
+            new_or_current_node_offset.write(new_node_value_span_iterator);
+
+            if (insert_needed)
+            {
+                std::vector<uint8_t> new_entry(node_info.key.size() + far_offset_ptr::get_size());
+                std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
+
+                span_iterator value_it({ new_entry.begin() + node_info.key.size(), new_entry.size() - node_info.key.size() });
+                insert_offset.write(value_it);
+                node.insert_entry(md, find_result, new_entry);
+            }
         }
+
+        if (node.get_transaction_id() != transaction_id)
+        {
+            new_or_current_node_offset = allocator.allocate_block(transaction_id);
+            node.set_transaction_id(transaction_id);
+        }
+
+        btree_node insert_node;
+
+        if (node.should_split())
+        {
+            insert_needed = true;
+            node.split(insert_node);
+        }
+        else
+        {
+            insert_needed = false;
+        }
+
+        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        node.write(write_it);
+        new_or_current_node_offset = offset;
+        result = current;
+        result.path[path_position].node_offset = new_or_current_node_offset;
+
+        if (insert_needed)
+        {
+            auto new_node_offset = allocator.allocate_block(transaction_id);
+            insert_offset = new_node_offset;
+            auto insert_write_it = cache.get_iterator(new_node_offset.get_file_id(), new_node_offset.get_offset());
+            insert_node.write(insert_write_it);
+        }
+
+        expect_leaf = false;
     }
 
-    throw object_db_exception("not implemented");
+    if (insert_needed)
+    {
+        // we now need a new root
+
+        btree_node new_root;
+        new_root.set_key_size(key.size());
+        new_root.set_value_size(far_offset_ptr::get_size());
+    }
 }
-btree_iterator btree_operations::update(file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree_operations::update(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    throw object_db_exception("not implemented");
+    if (it.is_end())
+    {
+        throw object_db_exception("cannot update past end of index");
+    }
+
+    btree_iterator current = it;
+    btree_iterator result = it;
+
+    far_offset_ptr new_or_current_node_offset; 
+
+    if (current.path.empty())
+    {
+        throw object_db_exception("Iterator path is empty, cannot update entry.");
+    }
+
+    bool expect_leaf = true;
+    while (!current.path.empty())
+    {
+        auto node_info = current.path.back();
+        if (!node_info.is_found)
+        {
+            throw object_db_exception("Key not found in the B-tree, cannot update entry.");
+        }
+        int path_position = node_info.btree_position;
+
+        auto offset = node_info.node_offset;
+        current.path.pop_back();
+
+        btree_node node;
+        auto iterator = cache.get_iterator(offset.get_file_id(), offset.get_offset());
+        node.read(iterator);
+        auto md = node.get_metadata();
+        auto find_result = node_info.get_find_result();
+
+        if (node.is_leaf())
+        {
+            if (!expect_leaf)
+            {
+                throw object_db_exception("unexpected leaf node");
+            }
+            // Update the entry in the current node
+            std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
+            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
+            std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
+            node.update_entry(md, find_result, new_entry);
+        }
+        else
+        {
+            if (!expect_leaf)
+            {
+                throw object_db_exception("unexpected branch node");
+            }
+
+            std::vector<uint8_t> new_entry(node_info.key.size() + far_offset_ptr::get_size());
+            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
+            
+            span_iterator value_it({ new_entry.begin() + node_info.key.size(), new_entry.size() - node_info.key.size() });
+            new_or_current_node_offset.write(value_it);
+            node.update_entry(md, find_result, new_entry);
+        }
+
+        if (node.get_transaction_id() != transaction_id)
+        {
+            new_or_current_node_offset = allocator.allocate_block(transaction_id);
+            node.set_transaction_id(transaction_id);
+        }
+
+        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        node.write(write_it);
+
+        new_or_current_node_offset = offset;
+        result = current;
+        result.path[path_position].node_offset = new_or_current_node_offset;
+        expect_leaf = false;
+    }
+    return result;
 }
-btree_iterator btree_operations::remove(file_cache& cache, btree_iterator it)
+btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it)
 {
     throw object_db_exception("not implemented");
 }

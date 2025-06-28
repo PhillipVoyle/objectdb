@@ -54,6 +54,11 @@ public:
         return *this;
     }
 
+    static constexpr filesize_t get_size()
+    {
+        return sizeof(filesize_t) * 2;
+    }
+
     // Destructor
     ~far_offset_ptr() = default;
 

@@ -82,6 +82,7 @@ public:
     std::span<uint8_t> get_key_at(int n);
     std::span<uint8_t> get_value_at(int n);
     bool should_split();
+    void split(btree_node& other);
     bool is_full();
 
     void init_leaf();
