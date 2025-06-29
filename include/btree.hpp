@@ -67,8 +67,6 @@ public:
     static btree_iterator next(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it);
     static btree_iterator prev(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it);
 
-    static btree_iterator upsert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, std::span<uint8_t> value);
-
     static std::vector<uint8_t> get_entry(file_cache& cache, btree_iterator it);
 
     static btree_iterator insert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
@@ -84,8 +82,14 @@ class btree
     file_cache& cache_;
     file_allocator& allocator_;
     far_offset_ptr offset_;
+
+    uint32_t key_size_ = 0; // Size of the keys in the B-tree
+    uint32_t value_size_ = 0; // Size of the values in the B-tree
+
+    bool check_offset();
+
 public:
-    btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator);
+    btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator, uint32_t key_size, uint32_t value_size);
 
     btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
     btree_iterator seek_begin(std::span<uint8_t> key); // seek to the first entry that is greater than or equal to the key

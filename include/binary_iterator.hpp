@@ -3,6 +3,7 @@
 #include <span>
 #include <cstdint>
 #include <type_traits>
+#include <sstream>
 
 template<typename T>
 concept Binary_iterator
@@ -63,6 +64,27 @@ void write_uint64(It& it, uint64_t value) {
 template<Binary_iterator It>
 void write_int64(It& it, int64_t value) {
     write_uint64(it, static_cast<uint64_t>(value));
+}
+
+template<Binary_iterator It>
+void write_string(It& it, const std::string& str)
+{
+    for (char c : str)
+    {
+        if (it.has_next())
+        {
+            it.write(static_cast<uint8_t>(c));
+        }
+        else
+        {
+            throw object_db_exception("Binary iterator does not have enough space to write the string.");
+        }
+    }
+
+    if (it.has_next())
+    {
+        it.write(0);
+    }
 }
 
 // Write a span of uint8_t to the iterator
@@ -149,5 +171,21 @@ void write_filesize(It& it, uint64_t value) {
 template<Binary_iterator It>
 uint64_t read_filesize(It& it) {
     return read_uint64(it);
+}
+
+template<Binary_iterator It>
+std::string read_string(It& it)
+{
+    std::stringstream ss;
+    while (it.has_next())
+    {
+        uint8_t byte = it.read();
+        if (byte == 0)
+        {
+            break; // Null terminator
+        }
+        ss << static_cast<char>(byte);
+    }
+    return ss.str();
 }
 

@@ -161,8 +161,8 @@ btree_node::find_result btree_node::find_key(const btree_node::metadata& md, std
             break;
         }
 
-        std::span<uint8_t> key = get_key_at(n);
-        int cmp = compare_span(key, key);
+        std::span<uint8_t> key_at_n = get_key_at(n);
+        int cmp = compare_span(key, key_at_n);
         if (cmp < 0)
         {
             break;

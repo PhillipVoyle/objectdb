@@ -35,6 +35,10 @@ std::fstream& file_cache::get_stream(filesize_t file_id, std::ios::openmode mode
     if (it == file_streams.end()) {
         // Open new file stream
         std::string filename = get_filename(cache_path, file_id);
+        if (!std::filesystem::exists(cache_path))
+        {
+            std::filesystem::create_directories(cache_path);
+        }
         std::fstream fs(filename, mode);
         if (!fs.is_open())
         {
