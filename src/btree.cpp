@@ -114,6 +114,7 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
         info.node_offset = current_offset;
         info.btree_position = 0;
         info.is_found = 0;
+        info.btree_size = node.get_entry_count();
         if (node.get_entry_count() > 0)
         {
             info.is_found = 1;
@@ -158,6 +159,7 @@ btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_off
         btree_node_info info;
         info.node_offset = current_offset;
         info.btree_position = node.get_entry_count(); // Position after the last entry
+        info.btree_size = node.get_entry_count();
         info.is_found = false; // End iterator does not point to a valid entry
         info.is_full = node.is_full();
         result.path.push_back(info);
@@ -208,14 +210,25 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
         auto find_result = node.find_key(md, key);
         btree_node_info info;
         info.node_offset = current_offset;
-        info.btree_position = find_result.position;
-        info.is_found = find_result.found;
-        info.is_full = node.is_full();
 
-        if (info.is_found || info.btree_position > 0)
+        uint16_t read_key_position = (info.is_found || find_result.position == 0)
+            ? info.btree_position
+            : info.btree_position - 1;
+
+        if (node.is_leaf())
         {
-            auto read_key_position = info.is_found ? info.btree_position : info.btree_position - 1;
+            info.btree_position = (uint16_t)find_result.position;
+            info.is_found = find_result.found;
+        }
+        else
+        {
+            info.btree_position = read_key_position;
+            info.is_found = true; // In a branch node, we always find the key or the position where it would be inserted
+        }
 
+        // if there's a key, read it
+        if (read_key_position < node.get_entry_count())
+        {
             auto span = node.get_key_at(read_key_position);
             info.key.resize(span.size());
             std::copy(span.begin(), span.end(), info.key.begin());
@@ -229,7 +242,7 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
         }
         else
         {
-            auto offset_span = node.get_value_at(find_result.position);
+            auto offset_span = node.get_value_at(read_key_position);
             auto span_it = span_iterator(offset_span);
             current_offset.read(span_it);
         }
@@ -341,6 +354,8 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
             info.btree_position = node.get_entry_count() ? node.get_entry_count() - 1 : 0;
             info.is_found = node.get_entry_count() > 0;
             info.is_full = node.is_full();
+            info.btree_size = node.get_entry_count();
+
             if (!info.is_found)
             {
                 return end(cache, btree_offset);
@@ -382,6 +397,8 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
                 child_info.btree_position = node.get_entry_count() - 1;
                 child_info.is_found = true;
                 child_info.is_full = node.is_full();
+                child_info.btree_size = node.get_entry_count();
+
                 auto key_span = node.get_key_at(node.get_entry_count() - 1);
                 child_info.key.assign(key_span.begin(), key_span.end());
                 result.path.push_back(child_info);
@@ -481,6 +498,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         info.btree_position = 0; // We inserted at the beginning
         info.is_found = true; // We found the entry we just inserted
         info.is_full = node.is_full();
+        info.btree_size = node.get_entry_count();
         info.key.assign(key.begin(), key.end()); // Store the key we just inserted
         current.path.push_back(info);
         result = current; // The result is the same as the current iterator
@@ -488,16 +506,16 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
     }
 
     bool expect_leaf = true;
+    result = current;
     while (!current.path.empty())
     {
         auto node_info = current.path.back();
-        if (!node_info.is_found)
+        if (node_info.is_found)
         {
-            throw object_db_exception("Key not found in the B-tree, cannot insert entry.");
+            throw object_db_exception("inserts require that a key does not already exist");
         }
-        int path_position = node_info.btree_position;
-
         current.path.pop_back();
+        int path_position = current.path.size();
         btree_node node;
         auto iterator = cache.get_iterator(
             node_info.node_offset.get_file_id(),
@@ -518,6 +536,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
 
             node.insert_entry(md, find_result, new_entry);
+            node_info.btree_size++;
+            node_info.is_found = true;
         }
         else
         {
@@ -546,6 +566,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
                 span_iterator value_it({ new_entry.begin() + insert_key.size(), new_entry.size() - insert_key.size() });
                 insert_offset.write(value_it);
                 node.insert_entry(md, find_result, new_entry);
+                node_info.btree_size++;
+                node_info.is_found = true;
             }
         }
 
@@ -569,7 +591,6 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
-        result = current;
         result.path[path_position].node_offset = new_or_current_node_offset;
 
         auto node_update_key_it = node.get_key_at(0);
@@ -646,7 +667,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         }
     }
 
-    return current;
+    return result;
 }
 btree_iterator btree_operations::update(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
