@@ -44,9 +44,12 @@ uint16_t btree_node::get_entry_count()
 
 void btree_node::set_entry_count(uint16_t value_count)
 {
+    auto md = get_metadata();
     std::span<uint8_t> value_count_span(data.begin() + entry_count_offset, entry_count_size);
     span_iterator value_count_iter(value_count_span);
     write_uint16(value_count_iter, value_count);
+
+    data.resize(md.header_size + (value_count * (md.key_size + md.value_size)));
 }
 
 uint32_t btree_node::get_value_size()
@@ -65,11 +68,8 @@ void btree_node::set_value_size(uint32_t value_size)
 
 filesize_t btree_node::calculate_buffer_size()
 {
-    filesize_t key_size = get_key_size();
-    filesize_t value_count = get_entry_count();
-    filesize_t value_size = get_value_size();
-
-    return value_count * (key_size + value_size);
+    auto md = get_metadata();
+    return md.entry_count * (md.key_size + md.value_size) + md.header_size;
 }
 
 filesize_t btree_node::calculate_entry_count_from_buffer_size()
@@ -125,12 +125,19 @@ std::span<uint8_t> btree_node::get_value_at(int n)
 
 bool btree_node::should_split()
 {
-    return calculate_entry_count_from_buffer_size() > 255;
+    return data.size() > block_size;
 }
 
 bool btree_node::is_full()
 {
-    return calculate_entry_count_from_buffer_size() >= 255;
+    auto md = get_metadata();
+    filesize_t key_size = md.key_size;
+    filesize_t value_size = md.value_size;
+    if ((data.size() + key_size + value_size) >= block_size)
+    {
+        return true;
+    }
+    return false;
 }
 
 btree_node::metadata btree_node::get_metadata()
@@ -208,8 +215,6 @@ void btree_node::update_entry(const btree_node::metadata& md, const btree_node::
 
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
-
-    set_entry_count(calculate_entry_count_from_buffer_size());
 }
 
 void btree_node::remove_key(const btree_node::metadata& md, const btree_node::find_result& fr)
@@ -275,13 +280,22 @@ void btree_node::init_leaf()
     set_transaction_id(0);
 }
 
+void btree_node::init_root()
+{
+    data.resize(data_offset + get_header_size());
+    set_key_size(0);
+    set_value_size(0);
+    set_entry_count(0);
+    set_transaction_id(0);
+}
+
 void btree_node::split(btree_node& overflow_node)
 {
     // determine the median
     auto md = get_metadata();
     auto count = md.entry_count;
     auto half_way = (uint32_t) (count / 2);
-
+    overflow_node.data.resize(overflow_node.get_header_size());
     overflow_node.data[flags_offset] = data[flags_offset];
     overflow_node.set_key_size(md.key_size);
     overflow_node.set_value_size(md.value_size);

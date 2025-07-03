@@ -20,8 +20,8 @@ TEST(btree_tests, test_insert_update_read_delete)
 
     far_offset_ptr initial{ 0, 0 };
 
-    uint32_t key_size = 30;
-    uint32_t value_size = 30;
+    uint32_t key_size = 500;
+    uint32_t value_size = 500;
 
     btree tree{ cache, initial, allocator, key_size, value_size };
 

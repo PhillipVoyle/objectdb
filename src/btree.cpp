@@ -510,6 +510,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
     while (!current.path.empty())
     {
         auto node_info = current.path.back();
+        new_or_current_node_offset = node_info.node_offset;
+
         if (node_info.is_found)
         {
             throw object_db_exception("inserts require that a key does not already exist");
@@ -541,7 +543,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         }
         else
         {
-            if (!expect_leaf)
+            if (expect_leaf)
             {
                 throw object_db_exception("unexpected branch node");
             }
@@ -614,6 +616,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
     {
         // we now need a new root
         btree_node new_root;
+        new_root.init_root();
         new_root.set_key_size(key.size());
         new_root.set_value_size(far_offset_ptr::get_size());
         auto md = new_root.get_metadata();

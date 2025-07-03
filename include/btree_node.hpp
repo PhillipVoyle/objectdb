@@ -86,6 +86,7 @@ public:
     bool is_full();
 
     void init_leaf();
+    void init_root();
 
     metadata get_metadata();
 
