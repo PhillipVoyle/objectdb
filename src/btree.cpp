@@ -639,12 +639,12 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         };
         std::vector<uint8_t> second_entry(key.size() + far_offset_ptr::get_size());
         span_iterator second_span_it{ second_entry };
-        write_span(span_it, insert_key);
-        insert_offset.write(span_it);
+        write_span(second_span_it, insert_key);
+        insert_offset.write(second_span_it);
 
         new_root.insert_entry(md, fr, second_entry);
 
-        auto tmp = current.path;
+        auto tmp = result.path;
 
         auto new_root_offset = allocator.allocate_block(transaction_id);
         auto new_node_iterator = cache.get_iterator(new_root_offset.get_file_id(), new_root_offset.get_offset());
@@ -662,11 +662,11 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             .is_root = true,
         };
 
-        current.path.clear();
-        current.path.push_back(new_node_info);
+        result.path.clear();
+        result.path.push_back(new_node_info);
         for (auto t : tmp)
         {
-            current.path.push_back(t);
+            result.path.push_back(t);
         }
     }
 
