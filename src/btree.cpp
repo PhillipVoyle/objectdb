@@ -210,6 +210,7 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
         auto find_result = node.find_key(md, key);
         btree_node_info info;
         info.node_offset = current_offset;
+        info.btree_size = node.get_entry_count();
 
         uint16_t read_key_position = (find_result.found || find_result.position == 0)
             ? find_result.position
@@ -462,7 +463,7 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
 
 btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
-    btree_iterator current = it;
+    btree_iterator original = it;
     btree_iterator result = it;
     far_offset_ptr new_or_current_node_offset;
     far_offset_ptr insert_offset;
@@ -471,11 +472,12 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
     std::vector<uint8_t> insert_key;
     std::vector<uint8_t> update_key;
 
-    if (current.path.empty())
+    if (original.path.empty())
     {
         // this is an empty btree
         btree_node node;
         node.init_leaf();
+        node.set_transaction_id(transaction_id);
         node.set_key_size(key.size());
         node.set_value_size(value.size());
         auto medatada = node.get_metadata();
@@ -500,24 +502,21 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         info.is_full = node.is_full();
         info.btree_size = node.get_entry_count();
         info.key.assign(key.begin(), key.end()); // Store the key we just inserted
-        current.path.push_back(info);
-        result = current; // The result is the same as the current iterator
+        original.path.push_back(info);
+        result = original; // The result is the same as the current iterator
         return result;
     }
 
     bool expect_leaf = true;
-    result = current;
-    while (!current.path.empty())
+    result = original;
+    auto current_path = original.path;
+    uint16_t result_btree_position = 0;
+    while (!current_path.empty())
     {
-        auto node_info = current.path.back();
-        new_or_current_node_offset = node_info.node_offset;
+        auto node_info = current_path.back();
 
-        if (node_info.is_found)
-        {
-            throw object_db_exception("inserts require that a key does not already exist");
-        }
-        current.path.pop_back();
-        int path_position = current.path.size();
+        current_path.pop_back();
+        int path_position = current_path.size();
         btree_node node;
         auto iterator = cache.get_iterator(
             node_info.node_offset.get_file_id(),
@@ -525,9 +524,14 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         node.read(iterator);
         auto md = node.get_metadata();
-        auto find_result = node.find_key(md, node_info.key);
+        auto find_result = node_info.get_find_result();
         if (node.is_leaf())
         {
+            if (node_info.is_found)
+            {
+                throw object_db_exception("inserts require that a key does not already exist");
+            }
+
             if (!expect_leaf)
             {
                 throw object_db_exception("unexpected leaf node");
@@ -567,11 +571,18 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
                 span_iterator value_it({ new_entry.begin() + insert_key.size(), new_entry.size() - insert_key.size() });
                 insert_offset.write(value_it);
-                node.insert_entry(md, find_result, new_entry);
+                auto find_result_insert = btree_node::find_result
+                {
+                    .position = find_result.position + 1, // Insert after the current position
+                    .found = false // We are inserting a new key
+                };
+                node.insert_entry(md, find_result_insert, new_entry);
                 node_info.btree_size++;
                 node_info.is_found = true;
             }
         }
+
+        new_or_current_node_offset = node_info.node_offset;
 
         if (node.get_transaction_id() != transaction_id)
         {
@@ -584,7 +595,9 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         if (node.should_split())
         {
             insert_needed = true;
+
             node.split(insert_node);
+            insert_node.set_transaction_id(transaction_id);
         }
         else
         {
@@ -593,11 +606,11 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
-        result.path[path_position].node_offset = new_or_current_node_offset;
 
         auto node_update_key_it = node.get_key_at(0);
         update_key = std::vector<uint8_t>(node_update_key_it.begin(), node_update_key_it.end());
 
+        result_btree_position = 0;
         if (insert_needed)
         {
             auto new_node_offset = allocator.allocate_block(transaction_id);
@@ -607,8 +620,26 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
             auto insert_key_span = insert_node.get_key_at(0);
             insert_key = std::vector<uint8_t>(insert_key_span.begin(), insert_key_span.end());
-        }
 
+            auto ec = node.get_entry_count();
+            if (find_result.position > ec)
+            {
+                result.path[path_position].node_offset = new_node_offset;
+                result.path[path_position].btree_position = find_result.position - ec;
+                result_btree_position = 1;
+            }
+            else
+            {
+                result.path[path_position].node_offset = new_or_current_node_offset;
+                result.path[path_position].btree_position = find_result.position;
+            }
+        }
+        else
+        {
+            result.path[path_position].node_offset = new_or_current_node_offset;
+            result.path[path_position].btree_position = find_result.position;
+        }
+        result.path[path_position].is_found = true;
         expect_leaf = false;
     }
 
@@ -617,6 +648,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         // we now need a new root
         btree_node new_root;
         new_root.init_root();
+        new_root.set_transaction_id(transaction_id);
         new_root.set_key_size(key.size());
         new_root.set_value_size(far_offset_ptr::get_size());
         auto md = new_root.get_metadata();
@@ -654,7 +686,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         btree_node_info new_node_info
         {
             .node_offset = new_root_offset,
-            .btree_position = 0, // no - this will depend where the node was inserted
+            .btree_position = result_btree_position, // no - this will depend where the node was inserted
             .btree_size = 2,
             .key = update_key,
             .is_found = 1,

@@ -18,6 +18,8 @@ bld/
 [Oo]bj/
 build/
 
+test_cache/
+
 # Roslyn cache directories
 *.ide/
 .vs/

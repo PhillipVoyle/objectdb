@@ -4,6 +4,7 @@
 
 #include "../include/file_iterator.hpp"
 #include "../include/file_cache.hpp"
+#include "../include/far_offset_ptr.hpp"
 
 #include <list>
 
@@ -112,6 +113,11 @@ uint8_t file_cache::read(filesize_t file_id, filesize_t offset)
 std::string file_cache::get_filename(const std::filesystem::path& cache_path, filesize_t file_id)
 {
     return (cache_path / ("file_" + std::to_string(file_id) + ".bin")).string();
+}
+
+file_iterator file_cache::get_iterator(const far_offset_ptr& ptr)
+{
+    return file_iterator(this, ptr.get_file_id(), ptr.get_offset());
 }
 
 file_iterator file_cache::get_iterator(filesize_t file_id, filesize_t offset)

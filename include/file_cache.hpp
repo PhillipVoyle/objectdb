@@ -9,6 +9,8 @@
 #include "../include/core.hpp"
 #include "../include/file_iterator.hpp"
 
+class far_offset_ptr;
+
 class file_cache  
 {  
     std::filesystem::path cache_path; // Use the alias 'fs::path' to resolve incomplete type error  
@@ -32,4 +34,5 @@ public:
     uint8_t read(filesize_t file_id, filesize_t offset);
 
     file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0);
+    file_iterator get_iterator(const far_offset_ptr& ptr);
 };

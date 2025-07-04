@@ -89,6 +89,8 @@ class btree
     bool check_offset();
 
 public:
+
+    far_offset_ptr get_offset() const { return offset_; }
     btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator, uint32_t key_size, uint32_t value_size);
 
     btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
