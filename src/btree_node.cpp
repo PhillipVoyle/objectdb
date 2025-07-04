@@ -108,9 +108,7 @@ std::span<uint8_t> btree_node::get_value_at(int n)
     filesize_t key_size = get_key_size();
     filesize_t value_size = get_value_size();
 
-    // Calculate the offset to the nth key-value pair
-    // Layout: [0] is_leaf (1 byte), [1-3] key_size (3 bytes), [4-7] value_size (4 bytes)
-    size_t header_size = 1 + 3 + 4;
+    size_t header_size = get_header_size();
     size_t pair_size = static_cast<size_t>(key_size + value_size);
 
     size_t offset = header_size + n * pair_size + key_size;
@@ -120,7 +118,7 @@ std::span<uint8_t> btree_node::get_value_at(int n)
         throw std::out_of_range("Value index out of range");
     }
 
-    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size));
+    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(value_size));
 }
 
 bool btree_node::should_split()
@@ -191,7 +189,7 @@ void btree_node::insert_entry(const btree_node::metadata& md, const btree_node::
 {
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
     size_t offset = md.header_size + fr.position * pair_size;
-    data.resize(data_offset + pair_size * (md.entry_count + 1));
+    set_entry_count(md.entry_count + 1);
     // Move existing data at and after the insert position back by one pair_size
     if (fr.position < md.entry_count)
     {
@@ -203,8 +201,6 @@ void btree_node::insert_entry(const btree_node::metadata& md, const btree_node::
     }
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
-
-    set_entry_count(calculate_entry_count_from_buffer_size());
 }
 
 void btree_node::update_entry(const btree_node::metadata& md, const btree_node::find_result& fr, std::span<uint8_t> entry)

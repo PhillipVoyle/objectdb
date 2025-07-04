@@ -211,9 +211,9 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
         btree_node_info info;
         info.node_offset = current_offset;
 
-        uint16_t read_key_position = (info.is_found || find_result.position == 0)
-            ? info.btree_position
-            : info.btree_position - 1;
+        uint16_t read_key_position = (find_result.found || find_result.position == 0)
+            ? find_result.position
+            : (find_result.position - 1);
 
         if (node.is_leaf())
         {
@@ -534,8 +534,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             }
             // Insert the entry in the current node
             std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
-            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
-            std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
+            std::copy(key.begin(), key.end(), new_entry.begin());
+            std::copy(value.begin(), value.end(), new_entry.begin() + key.size());
 
             node.insert_entry(md, find_result, new_entry);
             node_info.btree_size++;
@@ -668,6 +668,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         {
             result.path.push_back(t);
         }
+        result.btree_offset = new_root_offset;
     }
 
     return result;
