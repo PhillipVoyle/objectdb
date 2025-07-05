@@ -31,20 +31,26 @@ void dump_tree_node(file_cache& cache, far_offset_ptr offset, const std::string&
     for (int i = 0; i < metadata.entry_count; i ++)
     {
         auto key_span = node.get_key_at(i);
-        std::vector<uint8_t> key{ key_span.begin(), key_span.end() };
+        std::vector<uint8_t> key_bytes{ key_span.begin(), key_span.end() };
 
         auto value_span = node.get_value_at(i);
-        std::vector<uint8_t> value{ value_span.begin(), value_span.end() };
+        std::vector<uint8_t> value_bytes{ value_span.begin(), value_span.end() };
+
+        span_iterator key_it{ key_bytes };
+        auto key = read_uint32(key_it);
+
 
         if (is_leaf)
         {
-            std::cout << padding << "   " << "[" << i << "]" << ((int)key[0]) << ":" << ((int)value[0]) << std::endl;
+            span_iterator value_it{ value_bytes };
+            auto value = read_uint32(value_it);
+            std::cout << padding << "   " << "[" << i << "]" << key << ":" << value << std::endl;
         }
         else
         {
-            std::cout << padding << "   " << "[" << i << "]" << ((int)key[0]) << ":";
+            std::cout << padding << "   " << "[" << i << "]" << key << ":";
 
-            span_iterator it{ value };
+            span_iterator it{ value_bytes };
             far_offset_ptr sub_node_offset;
             sub_node_offset.read(it);
 
@@ -75,7 +81,7 @@ void main()
     file_cache cache{ "test_cache" };
     file_allocator allocator{ cache };
 
-    auto transaction_id = allocator.create_transaction();
+    auto transaction_id = 0; // allocator.create_transaction();
 
     far_offset_ptr initial{ 0, 0 };
 
@@ -83,11 +89,12 @@ void main()
     uint32_t value_size = 16;
 
     btree tree{ cache, initial, allocator, key_size, value_size };
+    dump_tree(cache, tree);
 
     std::vector<uint8_t> entry(key_size + value_size, 0);
 
-
-    for (uint32_t i = 0; i < 100; ++i)
+    transaction_id = allocator.create_transaction();
+    for (uint32_t i = 10; i < 20; ++i)
     {
         std::cout << "Inserting key: " << i << ", value: " << (i % 10) << std::endl;
 
@@ -95,15 +102,20 @@ void main()
         span_iterator value_span{ {entry.begin() + key_size, value_size} };
 
         write_uint32(key_span, i);
-        write_uint32(value_span, i % 10);
+        uint32_t value = i % 21;
+        write_uint32(value_span, value);
+        if (value == 0)
+        {
+            transaction_id = allocator.create_transaction();
+        }
 
-        std::cout << "Seek key: " << i << ", value: " << (i % 10) << std::endl;
+        std::cout << "Seek key: " << i << ", value: " << value << std::endl;
         auto it_seek = tree.seek_begin({ entry.begin(), key_size });
         write_path(it_seek);
-
         auto it = tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
 
-        std::cout << "Inserted key: " << i << ", value: " << (i % 10) << std::endl;
+
+        std::cout << "Inserted key: " << i << ", value: " << value << std::endl;
         write_path(it);
 
         /*
@@ -113,6 +125,21 @@ void main()
         std::cout << std::endl;
         */
 
-        dump_tree(cache, tree);
     }
+    dump_tree(cache, tree);
+
+    span_iterator key_span{ {entry.begin(), key_size} };
+    span_iterator value_span{ {entry.begin() + key_size, value_size} };
+
+    int key = 3;
+    write_uint32(key_span, key);
+    uint32_t value = 88;
+    write_uint32(value_span, value);
+
+    // provoke an update
+    auto it_update = tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
+    write_path(it_update);
+    dump_tree(cache, tree);
+
+    tree.remove(transaction_id, it_update);
 }

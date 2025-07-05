@@ -712,28 +712,30 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
         throw object_db_exception("cannot update past end of index");
     }
 
-    btree_iterator current = it;
+    btree_iterator original = it;
     btree_iterator result = it;
 
     far_offset_ptr new_or_current_node_offset; 
 
-    if (current.path.empty())
+    if (original.path.empty())
     {
         throw object_db_exception("Iterator path is empty, cannot update entry.");
     }
 
     bool expect_leaf = true;
-    while (!current.path.empty())
+    result = original;
+    auto current_path = original.path;
+    while (!current_path.empty())
     {
-        auto node_info = current.path.back();
+        auto node_info = current_path.back();
         if (!node_info.is_found)
         {
             throw object_db_exception("Key not found in the B-tree, cannot update entry.");
         }
-        int path_position = node_info.btree_position;
 
         auto offset = node_info.node_offset;
-        current.path.pop_back();
+        current_path.pop_back();
+        int path_position = current_path.size();
 
         btree_node node;
         auto iterator = cache.get_iterator(offset.get_file_id(), offset.get_offset());
@@ -755,7 +757,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
         }
         else
         {
-            if (!expect_leaf)
+            if (expect_leaf)
             {
                 throw object_db_exception("unexpected branch node");
             }
@@ -773,12 +775,15 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
             new_or_current_node_offset = allocator.allocate_block(transaction_id);
             node.set_transaction_id(transaction_id);
         }
+        else
+        {
+            new_or_current_node_offset = offset;
+        }
 
         auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
         new_or_current_node_offset = offset;
-        result = current;
         result.path[path_position].node_offset = new_or_current_node_offset;
         expect_leaf = false;
     }
@@ -786,5 +791,10 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
 }
 btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it)
 {
-    throw object_db_exception("not implemented");
+    if (it.is_end())
+    {
+        throw object_db_exception("cannot remove past end of index");
+    }
+    it.path.back().is_found = false; // Mark the entry as not found
+    return it;
 }
