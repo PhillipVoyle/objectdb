@@ -95,7 +95,6 @@ btree_iterator btree::update(filesize_t transaction_id, btree_iterator it, std::
 }
 btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
 {
-    throw object_db_exception("B-tree remove operation is not implemented.");
     return btree_operations::remove(transaction_id, allocator_, cache_, it);
 }
 
@@ -789,12 +788,65 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
     }
     return result;
 }
+
 btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it)
 {
     if (it.is_end())
     {
         throw object_db_exception("cannot remove past end of index");
     }
+
+    bool remove_needed = true;
+    auto original = it;
+    auto result = it;
+    auto current_path = original.path;
+
+    far_offset_ptr offset;
+
+    while (!current_path.empty())
+    {
+        auto info_node = current_path.back();
+        if (!info_node.is_found)
+        {
+            throw object_db_exception("cannot remove a value unless it was found");
+        }
+        current_path.pop_back();
+        int path_position = current_path.size();
+
+        btree_node node;
+        auto it = cache.get_iterator(info_node.node_offset);
+        node.read(it);
+        auto md = node.get_metadata();
+
+        // todo: implement node merging if the size of the node is less than the minimum size after removal
+        if (remove_needed)
+        {
+            node.remove_key(md, info_node.get_find_result());
+        }
+
+        remove_needed = node.get_entry_count() == 0;
+
+        if (node.get_transaction_id() != transaction_id)
+        {
+            offset = allocator.allocate_block(transaction_id);
+            node.set_transaction_id(transaction_id);
+        }
+        else
+        {
+            offset = info_node.node_offset; // We are updating the current node
+        }
+
+        auto write_it = cache.get_iterator(offset.get_file_id(), offset.get_offset());
+
+        // todo: is there any point to write the node if we are removing it?
+        node.write(write_it);
+        result.path[path_position].node_offset = offset;
+        result.path[path_position].btree_position = info_node.btree_position; // Keep the same position
+        result.path[path_position].is_found = !remove_needed;
+        result.path[path_position].is_full = node.is_full();
+        result.path[path_position].btree_size = node.get_entry_count();
+    }
+
     it.path.back().is_found = false; // Mark the entry as not found
-    return it;
+    return it; //todo: does it make sense to return an iterator? what should it point to?
 }

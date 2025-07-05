@@ -226,7 +226,7 @@ void btree_node::remove_key(const btree_node::metadata& md, const btree_node::fi
         );
     }
 
-    data.resize(data_offset + pair_size * (md.entry_count - 1));
+    set_entry_count(md.entry_count - 1);
 }
 
 bool btree_node::remove_key(std::span<uint8_t> key)

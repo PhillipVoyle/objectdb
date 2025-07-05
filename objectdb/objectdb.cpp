@@ -142,4 +142,5 @@ void main()
     dump_tree(cache, tree);
 
     tree.remove(transaction_id, it_update);
+    dump_tree(cache, tree);
 }

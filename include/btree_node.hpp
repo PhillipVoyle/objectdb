@@ -81,6 +81,7 @@ public:
     filesize_t calculate_entry_count_from_buffer_size();
     std::span<uint8_t> get_key_at(int n);
     std::span<uint8_t> get_value_at(int n);
+
     bool should_split();
     void split(btree_node& other);
     bool is_full();
@@ -92,6 +93,7 @@ public:
 
     find_result find_key(const metadata& md, std::span<uint8_t> key);
 
+    std::span<uint8_t> get_entry(const metadata& md, const find_result& fr);
     void insert_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry);
     void update_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry);
     void remove_key(const metadata& md, const find_result& fr);
