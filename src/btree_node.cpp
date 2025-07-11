@@ -121,9 +121,63 @@ std::span<uint8_t> btree_node::get_value_at(int n)
     return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(value_size));
 }
 
+std::span<uint8_t> btree_node::get_entry(int n)
+{
+    filesize_t key_size = get_key_size();
+    filesize_t value_size = get_value_size();
+
+    // Calculate the offset to the nth key-value pair
+    // Layout: [0] is_leaf (1 byte), [1-3] key_size (3 bytes), [4-7] value_size (4 bytes)
+    size_t header_size = get_header_size();
+    size_t pair_size = static_cast<size_t>(key_size + value_size);
+
+    size_t offset = header_size + n * pair_size;
+
+    if (offset + key_size > data.size())
+        throw std::out_of_range("Key index out of range");
+
+    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size + value_size));
+}
+
+
 bool btree_node::should_split()
 {
     return data.size() > block_size;
+}
+
+uint16_t btree_node::get_capacity(const metadata& md)
+{
+    return (block_size - md.header_size) / (md.key_size + md.value_size);
+}
+
+uint16_t btree_node::get_capacity()
+{
+    auto md = get_metadata();
+    return get_capacity(md);
+}
+
+bool btree_node::should_merge()
+{
+    auto md = get_metadata();
+    return get_entry_count() < (get_capacity(md) / 2);
+}
+
+void btree_node::merge(btree_node& other_node)
+{
+    auto onmd = other_node.get_metadata();
+
+    for (uint32_t a = 0; a < onmd.entry_count; a++)
+    {
+        auto md = get_metadata();
+        auto fr = find_result
+        {
+            .position = (uint32_t)(md.entry_count),
+            .found = false
+        };
+        auto entry_span = other_node.get_entry(a);
+        insert_entry(md, fr, entry_span);
+    }
+    other_node.set_entry_count(0);
 }
 
 bool btree_node::is_full()

@@ -95,7 +95,19 @@ btree_iterator btree::update(filesize_t transaction_id, btree_iterator it, std::
 }
 btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
 {
-    return btree_operations::remove(transaction_id, allocator_, cache_, it);
+    auto result = btree_operations::remove(transaction_id, allocator_, cache_, it);
+
+    if (result.path.empty())
+    {
+        offset_ = far_offset_ptr();
+    }
+    else
+    {
+        offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
+    }
+
+    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
+    return result;
 }
 
 btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_offset)
@@ -796,14 +808,29 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
         throw object_db_exception("cannot remove past end of index");
     }
 
-    bool remove_needed = true;
     auto original = it;
     auto result = it;
     auto current_path = original.path;
 
+    if (current_path.empty())
+    {
+        btree_iterator iterator;
+        return iterator;
+    }
+
     far_offset_ptr offset;
 
-    while (!current_path.empty())
+    bool remove_needed = true;
+    auto remove_position = current_path.back().btree_position;
+
+    std::shared_ptr<btree_node> node;
+
+    bool update_needed = false;
+    uint32_t update_position = 0;
+    std::vector<uint8_t> update_key;
+    far_offset_ptr update_offset;
+
+    while (!current_path.empty() && (remove_needed || update_needed))
     {
         auto info_node = current_path.back();
         if (!info_node.is_found)
@@ -812,41 +839,197 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
         }
         current_path.pop_back();
         int path_position = current_path.size();
+        offset = info_node.node_offset;
+        
+        if (!node)
+        {
+            auto it = cache.get_iterator(info_node.node_offset);
+            node = std::make_shared<btree_node>();
+            node->read(it);
+        }
+        auto md = node->get_metadata();
 
-        btree_node node;
-        auto it = cache.get_iterator(info_node.node_offset);
-        node.read(it);
-        auto md = node.get_metadata();
-
-        // todo: implement node merging if the size of the node is less than the minimum size after removal
+        auto node_entry_count = md.entry_count;
+        auto node_removed_at = remove_position;
+        auto node_removed = remove_needed;
         if (remove_needed)
         {
-            node.remove_key(md, info_node.get_find_result());
+            btree_node::find_result fr
+            {
+                .position = remove_position,
+                .found = true
+            };
+
+            if (node_entry_count > remove_position)
+            {
+                node->remove_key(md, fr);
+                node_entry_count--;
+            }
+            remove_needed = false;
         }
 
-        remove_needed = node.get_entry_count() == 0;
+        md = node->get_metadata();
 
-        if (node.get_transaction_id() != transaction_id)
+        if (update_needed)
+        {
+            std::vector<uint8_t> entry(md.key_size + far_offset_ptr::get_size());
+            std::copy(update_key.begin(), update_key.end(), entry.begin());
+
+            auto spit = span_iterator{entry, md.key_size};
+
+            update_offset.write(spit);
+
+            btree_node::find_result update_fr {
+                .position = update_position,
+                .found = true
+            };
+
+            node->update_entry(md, update_fr, entry);
+        }
+        update_needed = true; // we expect an update at every loop thereafter
+
+        md = node->get_metadata();
+
+        std::shared_ptr<btree_node> parent_node;
+        std::shared_ptr<btree_node> other_node;
+
+        far_offset_ptr other_node_offset;
+
+        update_position = 0;
+        remove_position = 0;
+
+        if (path_position != 0 && node_removed)
+        {
+            auto parent_info_node = current_path.back();
+            int node_position_in_parent = parent_info_node.btree_position;
+            update_position = node_position_in_parent;
+
+            
+            if (node->should_merge())
+            {
+                // locate parent node
+                auto parent_it = cache.get_iterator(parent_info_node.node_offset);
+                parent_node = std::make_shared<btree_node>();
+                parent_node->read(parent_it);
+
+                auto parent_metadata = parent_node->get_metadata();
+
+                int other_node_position = 1;
+                if (parent_metadata.entry_count > 1)
+                {
+                    auto other_node_offset_span = parent_node->get_value_at(other_node_position);
+                    auto other_node_offset_it = span_iterator{ other_node_offset_span };
+                    other_node_offset.read(other_node_offset_it);
+
+                    auto other_node_it = cache.get_iterator(other_node_offset);
+
+                    other_node = std::make_shared<btree_node>();
+                    other_node->read(other_node_it);
+                    auto other_node_metadata = other_node->get_metadata();
+
+                    auto total_count = other_node_metadata.entry_count + node_entry_count;
+                    int position_in_total = 0;
+
+                    if (other_node_position > node_position_in_parent)
+                    {
+                        position_in_total = node_removed_at;
+                        node->merge(*other_node);
+                    }
+                    else
+                    {
+                        position_in_total = other_node_metadata.entry_count + node_removed_at;
+                        other_node->merge(*node);
+
+                        auto tmp_position = node_position_in_parent;
+                        node_position_in_parent = other_node_position;
+                        other_node_position = tmp_position;
+
+                        std::shared_ptr<btree_node> tmp = node;
+                        node = other_node;
+                        other_node = tmp;
+                    }
+
+                    if (node->should_split())
+                    {
+                        node->split(*other_node);
+                        remove_position = 0;
+                        remove_needed = false;
+
+                        if (other_node->get_transaction_id() != transaction_id)
+                        {
+                            other_node_offset = allocator.allocate_block(transaction_id);
+                        }
+
+                        std::vector<uint8_t> other_node_parent_entry(parent_metadata.key_size + far_offset_ptr::get_size());
+                        auto entry0_span = other_node->get_value_at(0);
+                        std::copy(entry0_span.begin(), entry0_span.end(), other_node_parent_entry.begin());
+
+                        span_iterator spit{ other_node_parent_entry, parent_metadata.key_size };
+                        other_node_offset.write(spit);
+                    }
+                    else
+                    {
+                        other_node.reset();
+                        remove_position = other_node_position;
+                        remove_needed = true;
+                    }
+                }
+
+                if (node->get_entry_count() == 0)
+                {
+                    return btree_iterator{}; // this btree is now empty
+                }
+                update_position = node_position_in_parent;
+            }
+        }
+
+        if (node->get_transaction_id() != transaction_id)
         {
             offset = allocator.allocate_block(transaction_id);
-            node.set_transaction_id(transaction_id);
+            update_needed = true;
         }
-        else
+
+        if (node->get_entry_count() > 0)
         {
-            offset = info_node.node_offset; // We are updating the current node
+            auto update_span = node->get_key_at(0);
+            update_key = std::vector<uint8_t>(update_span.begin(), update_span.end());
+            update_offset = offset;
         }
 
         auto write_it = cache.get_iterator(offset.get_file_id(), offset.get_offset());
 
-        // todo: is there any point to write the node if we are removing it?
-        node.write(write_it);
+        node->write(write_it);
         result.path[path_position].node_offset = offset;
-        result.path[path_position].btree_position = info_node.btree_position; // Keep the same position
-        result.path[path_position].is_found = !remove_needed;
-        result.path[path_position].is_full = node.is_full();
-        result.path[path_position].btree_size = node.get_entry_count();
+        result.path[path_position].btree_position =
+            node_removed
+            ? node_removed_at
+            : info_node.btree_position; // Keep the same position
+
+        result.path[path_position].btree_size = node->get_entry_count();
+        result.path[path_position].is_found = result.path[path_position].btree_position < result.path[path_position].btree_size;
+        if (result.path[path_position].is_found)
+        {
+            auto node_key = node->get_key_at(result.path[path_position].btree_position);
+            result.path[path_position].key = std::vector<uint8_t>(node_key.begin(), node_key.end());
+        }
+        else
+        {
+            result.path[path_position].key.clear();
+        }
+
+        result.path[path_position].is_full = node->is_full();
+
+        auto count = node->get_entry_count();
+        if ((count == 0) || (!node->is_leaf() && count == 1)) // we have a new root, above this node (or the tree is now empty)
+        {
+            std::vector<btree_node_info> result_path(result.path.begin() + path_position + 1, result.path.end());
+            result.path = result_path;
+            break;
+        }
+
+        node = parent_node;
+        parent_node.reset();
     }
 
-    it.path.back().is_found = false; // Mark the entry as not found
     return it; //todo: does it make sense to return an iterator? what should it point to?
 }

@@ -68,7 +68,10 @@ void dump_tree(file_cache& cache, btree& tree)
     {
         std::cout << "empty btree" << std::endl;
     }
-    dump_tree_node(cache, offset);
+    else
+    {
+        dump_tree_node(cache, offset);
+    }
 }
 
 void main()
@@ -94,7 +97,7 @@ void main()
     std::vector<uint8_t> entry(key_size + value_size, 0);
 
     transaction_id = allocator.create_transaction();
-    for (uint32_t i = 10; i < 20; ++i)
+    for (uint32_t i = 10; i < 30; ++i)
     {
         std::cout << "Inserting key: " << i << ", value: " << (i % 10) << std::endl;
 
@@ -107,6 +110,7 @@ void main()
         if (value == 0)
         {
             transaction_id = allocator.create_transaction();
+            std::cout << "new transaction " << transaction_id << std::endl;
         }
 
         std::cout << "Seek key: " << i << ", value: " << value << std::endl;
@@ -114,19 +118,9 @@ void main()
         write_path(it_seek);
         auto it = tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
 
-
         std::cout << "Inserted key: " << i << ", value: " << value << std::endl;
         write_path(it);
-
-        /*
-        std::cout << "Seek key (post): " << i << ", value: " << (i % 10) << std::endl;
-        auto it_seek_post = tree.seek_begin({ entry.begin(), key_size });
-        write_path(it_seek_post);
-        std::cout << std::endl;
-        */
-
     }
-    dump_tree(cache, tree);
 
     span_iterator key_span{ {entry.begin(), key_size} };
     span_iterator value_span{ {entry.begin() + key_size, value_size} };
@@ -137,10 +131,15 @@ void main()
     write_uint32(value_span, value);
 
     // provoke an update
+    std::cout << "Inserted key: " << key << ", value: " << value << std::endl;
     auto it_update = tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
     write_path(it_update);
     dump_tree(cache, tree);
 
-    tree.remove(transaction_id, it_update);
-    dump_tree(cache, tree);
+    auto it_remove = it_update;
+    while (it_remove.btree_offset.get_file_id() != 0 && it_remove.btree_offset.get_file_id() != 0)
+    {
+        it_remove = tree.remove(transaction_id, it_remove);
+        dump_tree(cache, tree);
+    }
 }
