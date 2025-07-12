@@ -955,7 +955,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                         remove_position = 0;
                         remove_needed = false;
 
-                        if (other_node->get_transaction_id() != transaction_id)
+                        if (other_node->get_transaction_id() != transaction_id) // do we need to copy on write?
                         {
                             other_node_offset = allocator.allocate_block(transaction_id);
                         }
