@@ -966,6 +966,15 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
 
                         span_iterator spit{ other_node_parent_entry, parent_metadata.key_size };
                         other_node_offset.write(spit);
+
+                        auto other_node_position_fr = btree_node::find_result{
+                            .position = (uint32_t)other_node_position,
+                            .found = true
+                        };
+
+                        auto other_node_it = cache.get_iterator(other_node_offset);
+                        other_node->write(other_node_it);
+                        parent_node->update_entry(parent_metadata, other_node_position_fr, entry0_span);
                     }
                     else
                     {
