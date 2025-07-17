@@ -22,3 +22,12 @@ public:
 };
 
 int compare_span(const std::span<uint8_t>& a, const std::span<uint8_t>& b);
+
+class LexicalComparitor
+{
+public:
+    int operator()(const std::span<uint8_t>& s1, const std::span<uint8_t>& s2) const
+    {
+        return compare_span(s1, s2);
+    }
+};

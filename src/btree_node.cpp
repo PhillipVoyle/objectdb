@@ -204,37 +204,6 @@ btree_node::metadata btree_node::get_metadata()
     return result;
 }
 
-btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
-{
-    auto md = get_metadata();
-    bool found = false;
-    int n = 0;
-    for (;;)
-    {
-        if (n >= md.entry_count)
-        {
-            break;
-        }
-
-        std::span<uint8_t> key_at_n = get_key_at(n);
-        int cmp = compare_span(key, key_at_n);
-        if (cmp < 0)
-        {
-            break;
-        }
-        else if (cmp == 0)
-        {
-            found = true;
-            break;
-        }
-        n++;
-    }
-    find_result result;
-    result.position = n;
-    result.found = found;
-    return result;
-}
-
 void btree_node::insert_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
@@ -279,43 +248,6 @@ void btree_node::remove_key(int position)
     }
 
     set_entry_count(md.entry_count - 1);
-}
-
-bool btree_node::remove_key(std::span<uint8_t> key)
-{
-    auto md = get_metadata();
-    auto fr = find_key(key);
-    if (fr.found)
-    {
-        remove_key(fr.position);
-    }
-    return fr.found;
-}
-
-uint32_t btree_node::upsert_entry(std::span<uint8_t> entry, bool allow_replace)
-{
-    auto metadata = get_metadata();
-    size_t pair_size = static_cast<size_t>(metadata.key_size + metadata.value_size);
-    if (entry.size() != pair_size)
-    {
-        throw object_db_exception("expected an entry of correct size");
-    }
-    std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
-    auto fr = find_key(new_key);
-
-    if (fr.found)
-    {
-        if (!allow_replace)
-        {
-            throw object_db_exception("disallowed replace");
-        }
-        update_entry(fr.position, entry);
-    }
-    else
-    {
-        insert_entry(fr.position, entry);
-    }
-    return fr.position;
 }
 
 void btree_node::init_leaf()

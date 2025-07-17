@@ -31,15 +31,6 @@ btree_iterator btree::end()
     return btree_operations::end(cache_, offset_);
 }
 
-btree_iterator btree::seek_begin(std::span<uint8_t> key)
-{
-    return btree_operations::seek_begin(cache_, offset_, key);
-}
-btree_iterator btree::seek_end(std::span<uint8_t> key)
-{
-    return btree_operations::seek_end(cache_, offset_, key);
-}
-
 btree_iterator btree::next(btree_iterator it)
 {
     return btree_operations::next(cache_, offset_, it);
@@ -48,21 +39,6 @@ btree_iterator btree::prev(btree_iterator it)
 {
     assert(it.btree_offset == offset_); //"Iterator must be from the same B-tree instance.";
     return btree_operations::prev(cache_, offset_, it);
-}
-
-btree_iterator btree::upsert(filesize_t transaction_id, std::span<uint8_t> key, std::span<uint8_t> value)
-{
-    btree_iterator it = seek_begin(key);
-    if (it.is_end() || !it.path.back().is_found)
-    {
-        // If the key is not found, we need to insert it
-        return insert(transaction_id, it, key, value);
-    }
-    else
-    {
-        // If the key is found, we can update it
-        return update(transaction_id, it, key, value);
-    }
 }
 
 std::vector<uint8_t> btree::get_entry(btree_iterator it)
@@ -187,107 +163,6 @@ btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_off
     }
 
     return result;
-}
-
-btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key)
-{
-    if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
-    {
-        return btree_iterator{}; // Invalid B-tree offset
-    }
-
-    btree_iterator result;
-    btree_node node;
-    auto current_offset = btree_offset;
-    for (;;)
-    {
-        auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
-        if (!iterator.has_next())
-        {
-            if (result.path.empty())
-            {
-                result.btree_offset = btree_offset;
-                result.path.clear();
-                return result; // Empty B-tree
-            }
-            else
-            {
-                throw object_db_exception("B-tree node is empty or corrupted.");
-            }
-        }
-        node.read(iterator);
-        auto find_result = node.find_key(key);
-        btree_node_info info;
-        info.node_offset = current_offset;
-        info.btree_size = node.get_entry_count();
-
-        uint16_t read_key_position = (find_result.found || find_result.position == 0)
-            ? find_result.position
-            : (find_result.position - 1);
-
-        if (node.is_leaf())
-        {
-            info.btree_position = (uint16_t)find_result.position;
-            info.is_found = find_result.found;
-        }
-        else
-        {
-            info.btree_position = read_key_position;
-            info.is_found = true; // In a branch node, we always find the key or the position where it would be inserted
-        }
-
-        // if there's a key, read it
-        if (read_key_position < node.get_entry_count())
-        {
-            auto span = node.get_key_at(read_key_position);
-            info.key.resize(span.size());
-            std::copy(span.begin(), span.end(), info.key.begin());
-        }
-
-        result.path.push_back(info);
-
-        if (node.is_leaf())
-        {
-            break;
-        }
-        else
-        {
-            auto offset_span = node.get_value_at(read_key_position);
-            auto span_it = span_iterator(offset_span);
-            current_offset.read(span_it);
-        }
-    }
-    result.btree_offset = btree_offset;
-    return result;
-}
-
-btree_iterator btree_operations::seek_end(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key)
-{
-    if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
-    {
-
-        btree_iterator result{}; // Invalid B-tree offset
-        result.btree_offset = btree_offset;
-        return result;
-    }
-
-    auto it = seek_begin(cache, btree_offset, key);
-    if (it.is_end())
-    {
-        return it; // If the key is not found, return end iterator
-    }
-    // Move to the next entry if the key is found
-    if (it.path.back().is_found)
-    {
-        // Move to the next entry in the B-tree
-        it = next(cache, btree_offset, it);
-    } else {
-        // If the key was not found, we return the iterator at the position where it would be inserted
-        // This is already handled by seek_begin, so we just return it
-    }
-
-    it.btree_offset = btree_offset;
-    return it;
 }
 
 btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it)

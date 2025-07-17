@@ -98,15 +98,80 @@ public:
     void init_leaf();
     void init_root();
 
-    find_result find_key(std::span<uint8_t> key);
+    template<typename TSpanComparitor>
+    find_result find_key(std::span<uint8_t> key, TSpanComparitor comparitor)
+    {
+        auto md = get_metadata();
+        bool found = false;
+        int n = 0;
+        for (;;)
+        {
+            if (n >= md.entry_count)
+            {
+                break;
+            }
+
+            std::span<uint8_t> key_at_n = get_key_at(n);
+            int cmp = comparitor(key, key_at_n);
+            if (cmp < 0)
+            {
+                break;
+            }
+            else if (cmp == 0)
+            {
+                found = true;
+                break;
+            }
+            n++;
+        }
+        find_result result;
+        result.position = n;
+        result.found = found;
+        return result;
+    }
 
     void insert_entry(int position, std::span<uint8_t> entry);
     void update_entry(int position, std::span<uint8_t> entry);
     void remove_key(int position);
 
+    template<typename TSpanComparitor>
+    bool remove_key(std::span<uint8_t> key, TSpanComparitor comparitor)
+    {
+        auto md = get_metadata();
+        auto fr = find_key(key, comparitor);
+        if (fr.found)
+        {
+            remove_key(fr.position);
+        }
+        return fr.found;
+    }
 
-    bool remove_key(std::span<uint8_t> key);
-    uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace = true);
+    template<typename TSpanComparitor>
+    uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace, TSpanComparitor comparitor)
+    {
+        auto metadata = get_metadata();
+        size_t pair_size = static_cast<size_t>(metadata.key_size + metadata.value_size);
+        if (entry.size() != pair_size)
+        {
+            throw object_db_exception("expected an entry of correct size");
+        }
+        std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
+        auto fr = find_key(new_key, comparitor);
+
+        if (fr.found)
+        {
+            if (!allow_replace)
+            {
+                throw object_db_exception("disallowed replace");
+            }
+            update_entry(fr.position, entry);
+        }
+        else
+        {
+            insert_entry(fr.position, entry);
+        }
+        return fr.position;
+    }
 
     template<Binary_iterator It>
     void write(It& it)
