@@ -119,7 +119,6 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
     {
         auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
         node.read(iterator);
-        auto md = node.get_metadata();
 
         btree_node_info info;
         info.node_offset = current_offset;
@@ -217,8 +216,7 @@ btree_iterator btree_operations::seek_begin(file_cache& cache, far_offset_ptr bt
             }
         }
         node.read(iterator);
-        auto md = node.get_metadata();
-        auto find_result = node.find_key(md, key);
+        auto find_result = node.find_key(key);
         btree_node_info info;
         info.node_offset = current_offset;
         info.btree_size = node.get_entry_count();
@@ -491,17 +489,12 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         node.set_transaction_id(transaction_id);
         node.set_key_size(key.size());
         node.set_value_size(value.size());
-        auto medatada = node.get_metadata();
-        auto find_result = btree_node::find_result{
-            .position = 0, // We will insert at the beginning
-            .found = false // We are inserting a new key
-        };
 
         std::vector<uint8_t> new_entry(key.size() + value.size());
         std::copy(key.begin(), key.end(), new_entry.begin());
         std::copy(value.begin(), value.end(), new_entry.begin() + key.size());
 
-        node.insert_entry(medatada, find_result, new_entry);
+        node.insert_entry(0, new_entry);
         node.set_transaction_id(transaction_id);
         new_or_current_node_offset = allocator.allocate_block(transaction_id);
         auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
@@ -534,7 +527,6 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             node_info.node_offset.get_offset());
 
         node.read(iterator);
-        auto md = node.get_metadata();
         auto find_result = node_info.get_find_result();
         if (node.is_leaf())
         {
@@ -552,7 +544,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             std::copy(key.begin(), key.end(), new_entry.begin());
             std::copy(value.begin(), value.end(), new_entry.begin() + key.size());
 
-            node.insert_entry(md, find_result, new_entry);
+            node.insert_entry(find_result.position, new_entry);
             node_info.btree_size++;
             node_info.is_found = true;
         }
@@ -563,17 +555,17 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
                 throw object_db_exception("unexpected branch node");
             }
 
-            std::vector<uint8_t> new_node_entry(md.key_size + far_offset_ptr::get_size());
+            std::vector<uint8_t> new_node_entry(node.get_key_size() + far_offset_ptr::get_size());
             std::copy(update_key.begin(), update_key.end(), new_node_entry.begin());
             std::span<uint8_t> new_value_span {
-                new_node_entry.begin() + md.key_size,
+                new_node_entry.begin() + node.get_key_size(),
                 new_node_entry.end()
             };
 
             auto new_entry_span_it = span_iterator{ new_value_span };
             new_or_current_node_offset.write(new_entry_span_it);
 
-            node.update_entry(md, find_result, new_node_entry);
+            node.update_entry(find_result.position, new_node_entry);
 
             if (insert_needed)
             {
@@ -582,12 +574,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
                 span_iterator value_it({ new_entry.begin() + insert_key.size(), new_entry.size() - insert_key.size() });
                 insert_offset.write(value_it);
-                auto find_result_insert = btree_node::find_result
-                {
-                    .position = find_result.position + 1, // Insert after the current position
-                    .found = false // We are inserting a new key
-                };
-                node.insert_entry(md, find_result_insert, new_entry);
+                node.insert_entry(find_result.position + 1, new_entry);
                 node_info.btree_size++;
                 node_info.is_found = true;
             }
@@ -662,30 +649,20 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         new_root.set_transaction_id(transaction_id);
         new_root.set_key_size(key.size());
         new_root.set_value_size(far_offset_ptr::get_size());
-        auto md = new_root.get_metadata();
-        auto fr = btree_node::find_result{
-            .position = 0,
-            .found = true
-        };
 
         std::vector<uint8_t> first_entry(key.size() + far_offset_ptr::get_size());
         span_iterator span_it{ first_entry };
         write_span(span_it, update_key);
         new_or_current_node_offset.write(span_it);
-        new_root.insert_entry(md, fr, first_entry);
+        new_root.insert_entry(0, first_entry);
 
 
-        md = new_root.get_metadata();
-        fr = btree_node::find_result{
-            .position = 1,
-            .found = true
-        };
         std::vector<uint8_t> second_entry(key.size() + far_offset_ptr::get_size());
         span_iterator second_span_it{ second_entry };
         write_span(second_span_it, insert_key);
         insert_offset.write(second_span_it);
 
-        new_root.insert_entry(md, fr, second_entry);
+        new_root.insert_entry(1, second_entry);
 
         auto tmp = result.path;
 
@@ -751,7 +728,6 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
         btree_node node;
         auto iterator = cache.get_iterator(offset.get_file_id(), offset.get_offset());
         node.read(iterator);
-        auto md = node.get_metadata();
         auto find_result = node_info.get_find_result();
 
         if (node.is_leaf())
@@ -764,7 +740,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
             std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
             std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
             std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
-            node.update_entry(md, find_result, new_entry);
+            node.update_entry(find_result.position, new_entry);
         }
         else
         {
@@ -778,7 +754,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
             
             span_iterator value_it({ new_entry.begin() + node_info.key.size(), new_entry.size() - node_info.key.size() });
             new_or_current_node_offset.write(value_it);
-            node.update_entry(md, find_result, new_entry);
+            node.update_entry(find_result.position, new_entry);
         }
 
         if (node.get_transaction_id() != transaction_id)
@@ -847,48 +823,34 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
             node = std::make_shared<btree_node>();
             node->read(it);
         }
-        auto md = node->get_metadata();
-
-        auto node_entry_count = md.entry_count;
+        auto node_entry_count = node->get_entry_count();
         auto node_removed_at = remove_position;
         auto node_removed = remove_needed;
         if (remove_needed)
         {
-            btree_node::find_result fr
-            {
-                .position = remove_position,
-                .found = true
-            };
 
             if (node_entry_count > remove_position)
             {
-                node->remove_key(md, fr);
+                node->remove_key(remove_position);
                 node_entry_count--;
             }
             remove_needed = false;
         }
 
-        md = node->get_metadata();
 
         if (update_needed)
         {
-            std::vector<uint8_t> entry(md.key_size + far_offset_ptr::get_size());
+            auto key_size = node->get_key_size();
+            std::vector<uint8_t> entry(key_size + far_offset_ptr::get_size());
             std::copy(update_key.begin(), update_key.end(), entry.begin());
 
-            auto spit = span_iterator{entry, md.key_size};
+            auto spit = span_iterator{entry, key_size};
 
             update_offset.write(spit);
 
-            btree_node::find_result update_fr {
-                .position = update_position,
-                .found = true
-            };
-
-            node->update_entry(md, update_fr, entry);
+            node->update_entry(update_position, entry);
         }
         update_needed = true; // we expect an update at every loop thereafter
-
-        md = node->get_metadata();
 
         std::shared_ptr<btree_node> parent_node;
         std::shared_ptr<btree_node> other_node;
@@ -912,10 +874,9 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                 parent_node = std::make_shared<btree_node>();
                 parent_node->read(parent_it);
 
-                auto parent_metadata = parent_node->get_metadata();
 
                 int other_node_position = 1;
-                if (parent_metadata.entry_count > 1)
+                if (parent_node->get_entry_count() > 1)
                 {
                     auto other_node_offset_span = parent_node->get_value_at(other_node_position);
                     auto other_node_offset_it = span_iterator{ other_node_offset_span };
@@ -925,9 +886,9 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
 
                     other_node = std::make_shared<btree_node>();
                     other_node->read(other_node_it);
-                    auto other_node_metadata = other_node->get_metadata();
 
-                    auto total_count = other_node_metadata.entry_count + node_entry_count;
+                    auto other_node_entry_count = other_node->get_entry_count();
+                    auto total_count = other_node_entry_count + node_entry_count;
                     int position_in_total = 0;
 
                     if (other_node_position > node_position_in_parent)
@@ -937,7 +898,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                     }
                     else
                     {
-                        position_in_total = other_node_metadata.entry_count + node_removed_at;
+                        position_in_total = other_node_entry_count + node_removed_at;
                         other_node->merge(*node);
 
                         auto tmp_position = node_position_in_parent;
@@ -960,21 +921,16 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                             other_node_offset = allocator.allocate_block(transaction_id);
                         }
 
-                        std::vector<uint8_t> other_node_parent_entry(parent_metadata.key_size + far_offset_ptr::get_size());
+                        std::vector<uint8_t> other_node_parent_entry(parent_node->get_entry_count() + far_offset_ptr::get_size());
                         auto entry0_span = other_node->get_value_at(0);
                         std::copy(entry0_span.begin(), entry0_span.end(), other_node_parent_entry.begin());
 
-                        span_iterator spit{ other_node_parent_entry, parent_metadata.key_size };
+                        span_iterator spit{ other_node_parent_entry, parent_node->get_key_size()};
                         other_node_offset.write(spit);
-
-                        auto other_node_position_fr = btree_node::find_result{
-                            .position = (uint32_t)other_node_position,
-                            .found = true
-                        };
 
                         auto other_node_it = cache.get_iterator(other_node_offset);
                         other_node->write(other_node_it);
-                        parent_node->update_entry(parent_metadata, other_node_position_fr, entry0_span);
+                        parent_node->update_entry(other_node_position, entry0_span);
                     }
                     else
                     {

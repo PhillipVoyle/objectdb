@@ -25,10 +25,14 @@ void dump_tree_node(file_cache& cache, far_offset_ptr offset, const std::string&
     auto is_leaf = node.is_leaf();
     std::cout << padding << "   " << (is_leaf ? "leaf" : "branch") << std::endl;
 
-    auto metadata = node.get_metadata();
-    std::cout << padding << "   " << "count " << metadata.entry_count << ", key " << metadata.key_size << ", value " << metadata.value_size << std::endl;
+    auto key_size = node.get_key_size();
+    auto value_size = node.get_value_size();
+    auto entry_count = node.get_entry_count();
+    auto entry_size = key_size + value_size;
 
-    for (int i = 0; i < metadata.entry_count; i ++)
+    std::cout << padding << "   " << "count " << entry_count << ", key " << key_size << ", value " << value_size << std::endl;
+
+    for (int i = 0; i < entry_count; i ++)
     {
         auto key_span = node.get_key_at(i);
         //std::vector<uint8_t> key_bytes{ key_span.begin(), key_span.end() };

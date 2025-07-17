@@ -51,7 +51,6 @@ class btree_node
         return data_offset;
     }
 
-public:
     struct metadata
     {
         size_t header_size;
@@ -59,6 +58,10 @@ public:
         size_t value_size;
         size_t entry_count;
     };
+
+    metadata get_metadata();
+    uint16_t get_capacity(const metadata& md);
+public:
 
     struct find_result
     {
@@ -83,7 +86,6 @@ public:
     std::span<uint8_t> get_value_at(int n);
     std::span<uint8_t> get_entry(int n);
 
-    uint16_t get_capacity(const metadata& md);
     uint16_t get_capacity();
 
     bool should_split();
@@ -96,13 +98,11 @@ public:
     void init_leaf();
     void init_root();
 
-    metadata get_metadata();
+    find_result find_key(std::span<uint8_t> key);
 
-    find_result find_key(const metadata& md, std::span<uint8_t> key);
-
-    void insert_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry);
-    void update_entry(const metadata& md, const find_result& fr, std::span<uint8_t> entry);
-    void remove_key(const metadata& md, const find_result& fr);
+    void insert_entry(int position, std::span<uint8_t> entry);
+    void update_entry(int position, std::span<uint8_t> entry);
+    void remove_key(int position);
 
 
     bool remove_key(std::span<uint8_t> key);

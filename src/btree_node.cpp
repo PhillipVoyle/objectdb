@@ -164,18 +164,13 @@ bool btree_node::should_merge()
 
 void btree_node::merge(btree_node& other_node)
 {
-    auto onmd = other_node.get_metadata();
+    auto other_entry_count = other_node.get_entry_count();
 
-    for (uint32_t a = 0; a < onmd.entry_count; a++)
+    for (uint32_t a = 0; a < other_entry_count; a++)
     {
-        auto md = get_metadata();
-        auto fr = find_result
-        {
-            .position = (uint32_t)(md.entry_count),
-            .found = false
-        };
+        auto entry_count = get_entry_count();
         auto entry_span = other_node.get_entry(a);
-        insert_entry(md, fr, entry_span);
+        insert_entry(entry_count, entry_span);
     }
     other_node.set_entry_count(0);
 }
@@ -209,8 +204,9 @@ btree_node::metadata btree_node::get_metadata()
     return result;
 }
 
-btree_node::find_result btree_node::find_key(const btree_node::metadata& md, std::span<uint8_t> key)
+btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
 {
+    auto md = get_metadata();
     bool found = false;
     int n = 0;
     for (;;)
@@ -239,44 +235,46 @@ btree_node::find_result btree_node::find_key(const btree_node::metadata& md, std
     return result;
 }
 
-void btree_node::insert_entry(const btree_node::metadata& md, const btree_node::find_result& fr, std::span<uint8_t> entry)
+void btree_node::insert_entry(int position, std::span<uint8_t> entry)
 {
+    auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
-    size_t offset = md.header_size + fr.position * pair_size;
+    size_t offset = md.header_size + position * pair_size;
     set_entry_count(md.entry_count + 1);
     // Move existing data at and after the insert position back by one pair_size
-    if (fr.position < md.entry_count)
+    if (position < md.entry_count)
     {
         std::memmove(
             data.data() + offset + pair_size,
             data.data() + offset,
-            (md.entry_count - fr.position) * pair_size
+            (md.entry_count - position) * pair_size
         );
     }
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
-void btree_node::update_entry(const btree_node::metadata& md, const btree_node::find_result& fr, std::span<uint8_t> entry)
+void btree_node::update_entry(int position, std::span<uint8_t> entry)
 {
+    auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
-    size_t offset = md.header_size + fr.position * pair_size;
-    bool replace = fr.found;
+    size_t offset = md.header_size + position * pair_size;
 
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
-void btree_node::remove_key(const btree_node::metadata& md, const btree_node::find_result& fr)
+void btree_node::remove_key(int position)
 {
+    auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
-    size_t offset = md.header_size + fr.position * pair_size;
-    if (fr.position < (md.entry_count - 1))
+    size_t offset = md.header_size + position * pair_size;
+    if (position < (md.entry_count - 1))
     {
         std::memmove(
             data.data() + offset,
             data.data() + offset + pair_size,
-            (md.entry_count - fr.position - 1) * pair_size
+            (md.entry_count - position - 1) * pair_size
         );
     }
 
@@ -286,10 +284,10 @@ void btree_node::remove_key(const btree_node::metadata& md, const btree_node::fi
 bool btree_node::remove_key(std::span<uint8_t> key)
 {
     auto md = get_metadata();
-    auto fr = find_key(md, key);
+    auto fr = find_key(key);
     if (fr.found)
     {
-        remove_key(md, fr);
+        remove_key(fr.position);
     }
     return fr.found;
 }
@@ -303,7 +301,7 @@ uint32_t btree_node::upsert_entry(std::span<uint8_t> entry, bool allow_replace)
         throw object_db_exception("expected an entry of correct size");
     }
     std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
-    auto fr = find_key(metadata, new_key);
+    auto fr = find_key(new_key);
 
     if (fr.found)
     {
@@ -311,11 +309,11 @@ uint32_t btree_node::upsert_entry(std::span<uint8_t> entry, bool allow_replace)
         {
             throw object_db_exception("disallowed replace");
         }
-        update_entry(metadata, fr, entry);
+        update_entry(fr.position, entry);
     }
     else
     {
-        insert_entry(metadata, fr, entry);
+        insert_entry(fr.position, entry);
     }
     return fr.position;
 }
@@ -351,8 +349,6 @@ void btree_node::split(btree_node& overflow_node)
     overflow_node.set_value_size(md.value_size);
     overflow_node.set_entry_count((int16_t)(count - half_way));
 
-    auto ofn_md = overflow_node.get_metadata();
-
     uint32_t position = 0;
     for (uint32_t i = half_way; i < count; i++)
     {
@@ -362,11 +358,7 @@ void btree_node::split(btree_node& overflow_node)
         write_span(it, get_key_at(i));
         write_span(it, get_value_at(i));
 
-        auto fr = find_result{
-            .position = position,
-            .found = true,
-        };
-        overflow_node.update_entry(ofn_md, fr, entry);
+        overflow_node.update_entry(position, entry);
 
         position++;
     }
