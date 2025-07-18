@@ -908,5 +908,5 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
         parent_node.reset();
     }
 
-    return it; //todo: does it make sense to return an iterator? what should it point to?
+    return it;
 }
