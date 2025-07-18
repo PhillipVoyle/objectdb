@@ -101,8 +101,8 @@ void main()
 
     far_offset_ptr initial{ 0, 0 };
 
-    uint32_t key_size = 200;
-    uint32_t value_size = 600;
+    uint32_t key_size = 700;
+    uint32_t value_size = 30;
 
     btree tree{ cache, initial, allocator, key_size, value_size };
 

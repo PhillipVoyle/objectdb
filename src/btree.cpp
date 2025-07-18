@@ -153,12 +153,22 @@ btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_off
         {
             break;
         }
-        else
+        else if (info.btree_size > 1)
         {
+            auto& back = result.path.back();
+
+            back.btree_position--; // branch node references should be valid
+            back.is_found = true;
+
+            auto entry_count = node.get_entry_count();
             // Move to the rightmost child
-            auto child_offset_span = node.get_value_at(node.get_entry_count());
+            auto child_offset_span = node.get_value_at(info.btree_size - 1);
             auto it = span_iterator(child_offset_span);
             current_offset.read(it);
+        }
+        else
+        {
+            throw object_db_exception("degenerate node found while seeking end");
         }
     }
 
@@ -181,33 +191,60 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
     {
         return end(cache, btree_offset);
     }
-    // Traverse up the path to find a node with a next entry
-    while (!result.path.empty())
-    {
-        btree_node_info& info = result.path.back();
-        btree_node node;
-        auto iterator = cache.get_iterator(info.node_offset.get_file_id(), info.node_offset.get_offset());
-        node.read(iterator);
-        if (info.btree_position + 1 < node.get_entry_count())
-        {
-            // Move to next entry in this node
-            ++info.btree_position;
-            // Update key in leaf node
-            auto key_span = node.get_key_at(info.btree_position);
-            info.key.assign(key_span.begin(), key_span.end());
-            info.is_found = true;
-            info.is_full = node.is_full();
 
-            return result;
+    // find a node with a next
+    auto current_path = it.path;
+    while(!current_path.empty())
+    {
+        auto& info = current_path.back();
+        if ((info.btree_position + 1) < info.btree_size)
+        {
+            info.btree_position = info.btree_position + 1;
+            break;
         }
         else
         {
-            // No next entry in this node, move up
-            result.path.pop_back();
+            current_path.pop_back();
         }
     }
-    // If we reach here, there is no next entry (we were at the last entry)
-    return end(cache, btree_offset);
+
+    if (current_path.empty())
+    {
+        // If we reach here, there is no next entry (we were at the last entry)
+        return end(cache, btree_offset);
+    }
+
+    for (;;)
+    {
+        auto& info = current_path.back();
+        auto node_iterator = cache.get_iterator(info.node_offset);
+        btree_node node;
+        node.read(node_iterator);
+        info.is_found = true;
+        info.is_leaf = node.is_leaf();
+        info.is_full = node.is_full();
+        info.is_root = (current_path.size() == 1);
+        info.btree_size = node.get_entry_count();
+
+        if (info.is_leaf)
+        {
+            break;
+        }
+        else
+        {
+            auto value_span = node.get_value_at(info.btree_position);
+            auto span_it = span_iterator(value_span);
+            far_offset_ptr next_node;
+            next_node.read(span_it);
+            btree_node_info new_info;
+            new_info.btree_position = 0;
+            new_info.node_offset = next_node;
+            new_info.is_found = true;
+            current_path.push_back(new_info);
+        }
+    }
+    result.path = current_path;
+    return result;
 }
 btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it)
 {
