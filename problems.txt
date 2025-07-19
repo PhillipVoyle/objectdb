@@ -1,4 +1,3 @@
- * allocating new files
  * deleting files
  * compacting files
  * btree needs to know if it's writing it's first node

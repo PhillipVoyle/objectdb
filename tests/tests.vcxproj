@@ -101,9 +101,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="btree_tests.cpp" />
-    <ClCompile Include="field_descriptor_tests.cpp" />
-    <ClCompile Include="free_list_tests.cpp" />
-    <ClCompile Include="logging_btree_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
