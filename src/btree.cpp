@@ -93,13 +93,13 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
     auto current_offset = btree_offset;
     for (;;)
     {
-        auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        auto iterator = cache.get_iterator(current_offset);
         node.read(iterator);
 
         btree_node_info info;
         info.node_offset = current_offset;
         info.btree_position = 0;
-        info.is_found = 0;
+        info.is_found = false;
         info.btree_size = node.get_entry_count();
         if (node.get_entry_count() > 0)
         {
@@ -124,7 +124,9 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
         }
         else
         {
-            node.get_value_at(0);
+            auto val = node.get_value_at(0);
+            span_iterator value_it{ val };
+            current_offset.read(value_it);
         }
     }
     return result;
@@ -257,94 +259,74 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
     btree_iterator result = it;
     result.btree_offset = btree_offset;
 
-    // If iterator is at end, seek to the last record if possible
-    if (result.is_end()) {
-        // Seek to the rightmost (last) record in the B-tree
-        result.path.clear();
-        btree_node node;
-        // The root offset is not stored in the iterator, so we need to get it from the first node in the path if available
-        // If the iterator is at end and has no path, we cannot proceed
-        if (it.path.empty()) {
-            return btree_iterator{};
-        }
-        far_offset_ptr current_offset = it.path.front().node_offset;
-        for (;;) {
-            auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
-            node.read(iterator);
-            btree_node_info info;
-            info.node_offset = current_offset;
-            info.btree_position = node.get_entry_count() ? node.get_entry_count() - 1 : 0;
-            info.is_found = node.get_entry_count() > 0;
-            info.is_full = node.is_full();
-            info.btree_size = node.get_entry_count();
+    // find a shared root
+    auto current_path = it.path;
+    while (!current_path.empty())
+    {
+        auto& info = current_path.back();
 
-            if (!info.is_found)
+        if (info.btree_position == 0)
+        {
+            current_path.pop_back();
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (current_path.empty())
+    {
+        //todo: is this an error? basically means there is no earlier record (or is this fine?)
+        return begin(cache, btree_offset);
+    }
+    else
+    {
+        bool first = true;
+        for (;;)
+        {
+            auto& info = current_path.back();
+            auto it = cache.get_iterator(info.node_offset);
+            btree_node node;
+            node.read(it);
+
+            auto node_size = node.get_entry_count();
+            info.btree_size = node_size;
+            info.is_found = true;
+            info.is_leaf = node.is_leaf();
+            info.is_root = current_path.size() == 1;
+
+            if (first)
             {
-                return end(cache, btree_offset);
+                info.btree_position -= 1;
+                first = false;
             }
-            auto key_span = node.get_key_at(info.btree_position);
-            info.key.assign(key_span.begin(), key_span.end());
-            result.path.push_back(info);
+            else
+            {
+                assert(node_size > 0);
+                info.btree_position = node_size - 1;
+            }
+            auto key = node.get_key_at(info.btree_position);
+            info.key.assign(key.begin(), key.end());
+
             if (node.is_leaf())
             {
+                result.path = current_path;
                 return result;
             }
-            // Descend to the rightmost child
-            auto child_offset_span = node.get_value_at(node.get_entry_count());
-            far_offset_ptr child_offset;
-            std::copy(child_offset_span.begin(), child_offset_span.end(), reinterpret_cast<uint8_t*>(&child_offset));
-            current_offset = child_offset;
-        }
-    }
+            else
+            {
+                auto value = node.get_value_at(info.btree_position);
+                span_iterator offset_it{ value };
+                far_offset_ptr new_node_offset;
+                new_node_offset.read(offset_it);
 
-    // Traverse up the path to find a node with a previous entry
-    while (!result.path.empty()) {
-        btree_node_info& info = result.path.back();
-        if (info.btree_position > 0) {
-            // Move to previous entry in this node
-            --info.btree_position;
-
-            // Descend to the rightmost leaf if not a leaf node
-            btree_node node;
-            auto iterator = cache.get_iterator(info.node_offset.get_file_id(), info.node_offset.get_offset());
-            node.read(iterator);
-
-            while (!node.is_leaf()) {
-                // Get the child pointer at btree_position + 1 (for prev, we want the right child of the previous key)
-                auto child_offset_span = node.get_value_at(info.btree_position + 1);
-                far_offset_ptr child_offset;
-                std::copy(child_offset_span.begin(), child_offset_span.end(), reinterpret_cast<uint8_t*>(&child_offset));
-                btree_node_info child_info;
-                child_info.node_offset = child_offset;
-                child_info.btree_position = node.get_entry_count() - 1;
-                child_info.is_found = true;
-                child_info.is_full = node.is_full();
-                child_info.btree_size = node.get_entry_count();
-
-                auto key_span = node.get_key_at(node.get_entry_count() - 1);
-                child_info.key.assign(key_span.begin(), key_span.end());
-                result.path.push_back(child_info);
-
-                // Read the child node
-                iterator = cache.get_iterator(child_offset.get_file_id(), child_offset.get_offset());
-                node.read(iterator);
+                btree_node_info new_node_info;
+                new_node_info.node_offset = new_node_offset;
+                current_path.push_back(new_node_info);
             }
-
-            // Update key in leaf node
-            btree_node_info& leaf_info = result.path.back();
-            auto key_span = node.get_key_at(leaf_info.btree_position);
-            leaf_info.key.assign(key_span.begin(), key_span.end());
-            leaf_info.is_found = true;
-            leaf_info.is_full = node.is_full();
-            return result;
-        } else {
-            // No previous entry in this node, move up
-            result.path.pop_back();
         }
     }
-
-    // If we reach here, there is no previous entry (we were at the first entry)
-    return btree_iterator{};
 }
 
 
