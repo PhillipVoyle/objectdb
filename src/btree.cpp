@@ -104,17 +104,12 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
         if (node.get_entry_count() > 0)
         {
             info.is_found = 1;
-            info.is_full = node.is_full();
         }
         else
         {
             info.is_found = 0;
             return result; // empty btree
         }
-
-        auto span = node.get_key_at(0);
-        info.key.resize(span.size());
-        std::copy(span.begin(), span.end(), info.key.begin());
 
         result.path.push_back(info);
 
@@ -149,7 +144,6 @@ btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_off
         info.btree_position = node.get_entry_count(); // Position after the last entry
         info.btree_size = node.get_entry_count();
         info.is_found = false; // End iterator does not point to a valid entry
-        info.is_full = node.is_full();
         result.path.push_back(info);
         if (node.is_leaf())
         {
@@ -223,12 +217,9 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
         btree_node node;
         node.read(node_iterator);
         info.is_found = true;
-        info.is_leaf = node.is_leaf();
-        info.is_full = node.is_full();
-        info.is_root = (current_path.size() == 1);
         info.btree_size = node.get_entry_count();
 
-        if (info.is_leaf)
+        if (node.is_leaf())
         {
             break;
         }
@@ -293,8 +284,6 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
             auto node_size = node.get_entry_count();
             info.btree_size = node_size;
             info.is_found = true;
-            info.is_leaf = node.is_leaf();
-            info.is_root = current_path.size() == 1;
 
             if (first)
             {
@@ -306,8 +295,6 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
                 assert(node_size > 0);
                 info.btree_position = node_size - 1;
             }
-            auto key = node.get_key_at(info.btree_position);
-            info.key.assign(key.begin(), key.end());
 
             if (node.is_leaf())
             {
@@ -397,9 +384,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         info.node_offset = new_or_current_node_offset;
         info.btree_position = 0; // We inserted at the beginning
         info.is_found = true; // We found the entry we just inserted
-        info.is_full = node.is_full();
         info.btree_size = node.get_entry_count();
-        info.key.assign(key.begin(), key.end()); // Store the key we just inserted
         original.path.push_back(info);
         result = original; // The result is the same as the current iterator
         return result;
@@ -434,7 +419,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
                 throw object_db_exception("unexpected leaf node");
             }
             // Insert the entry in the current node
-            std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
+            std::vector<uint8_t> new_entry(key.size() + value.size());
             std::copy(key.begin(), key.end(), new_entry.begin());
             std::copy(value.begin(), value.end(), new_entry.begin() + key.size());
 
@@ -570,10 +555,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             .node_offset = new_root_offset,
             .btree_position = result_btree_position, // no - this will depend where the node was inserted
             .btree_size = 2,
-            .key = update_key,
-            .is_found = 1,
-            .is_leaf = false,
-            .is_root = true,
+            .is_found = 1
         };
 
         result.path.clear();
@@ -607,6 +589,9 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
     bool expect_leaf = true;
     result = original;
     auto current_path = original.path;
+
+    std::vector<uint8_t> update_key(key.begin(), key.end());
+    
     while (!current_path.empty())
     {
         auto node_info = current_path.back();
@@ -631,9 +616,9 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
                 throw object_db_exception("unexpected leaf node");
             }
             // Update the entry in the current node
-            std::vector<uint8_t> new_entry(node_info.key.size() + value.size());
-            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
-            std::copy(value.begin(), value.end(), new_entry.begin() + node_info.key.size());
+            std::vector<uint8_t> new_entry(key.size() + value.size());
+            std::copy(update_key.begin(), update_key.end(), new_entry.begin());
+            std::copy(value.begin(), value.end(), new_entry.begin() + update_key.size());
             node.update_entry(find_result.position, new_entry);
         }
         else
@@ -643,13 +628,14 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
                 throw object_db_exception("unexpected branch node");
             }
 
-            std::vector<uint8_t> new_entry(node_info.key.size() + far_offset_ptr::get_size());
-            std::copy(node_info.key.begin(), node_info.key.end(), new_entry.begin());
+            std::vector<uint8_t> new_entry(update_key.size() + far_offset_ptr::get_size());
+            std::copy(update_key.begin(), update_key.end(), new_entry.begin());
             
-            span_iterator value_it({ new_entry.begin() + node_info.key.size(), new_entry.size() - node_info.key.size() });
+            span_iterator value_it({ new_entry.begin() + key.size(), new_entry.size() - key.size() });
             new_or_current_node_offset.write(value_it);
             node.update_entry(find_result.position, new_entry);
         }
+
 
         if (node.get_transaction_id() != transaction_id)
         {
@@ -664,6 +650,8 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
         auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
+        auto update_span = node.get_key_at(0);
+        update_key.assign(update_span.begin(), update_span.end());
         new_or_current_node_offset = offset;
         result.path[path_position].node_offset = new_or_current_node_offset;
         expect_leaf = false;
@@ -866,17 +854,6 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
 
         result.path[path_position].btree_size = node->get_entry_count();
         result.path[path_position].is_found = result.path[path_position].btree_position < result.path[path_position].btree_size;
-        if (result.path[path_position].is_found)
-        {
-            auto node_key = node->get_key_at(result.path[path_position].btree_position);
-            result.path[path_position].key = std::vector<uint8_t>(node_key.begin(), node_key.end());
-        }
-        else
-        {
-            result.path[path_position].key.clear();
-        }
-
-        result.path[path_position].is_full = node->is_full();
 
         auto count = node->get_entry_count();
         if ((count == 0) || (!node->is_leaf() && count == 1)) // we have a new root, above this node (or the tree is now empty)
