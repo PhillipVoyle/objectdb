@@ -10,7 +10,10 @@ void write_path(const btree_iterator& it)
 {
     for (int n = 0; n < it.path.size(); n++)
     {
-        std::cout << it.path[n].node_offset.get_file_id() << "/" << it.path[n].node_offset.get_offset() << " " << it.path[n].btree_position << " - " << (it.path[n].is_found ? "found" : "not found") << std::endl;
+        std::cout << it.path[n].node_offset.get_file_id() << "/" << it.path[n].node_offset.get_offset()
+            << " " << it.path[n].btree_position
+            << " - " << (it.path[n].is_found ? "found" : "not found")
+            << std::endl;
     }
 }
 

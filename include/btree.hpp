@@ -5,19 +5,13 @@
 #include "../include/file_cache.hpp"
 #include "../include/file_allocator.hpp"
 
-
-
 struct btree_node_info
 {
     far_offset_ptr node_offset;
     uint16_t btree_position;
     uint16_t btree_size;
 
-    std::vector<uint8_t> key;
     bool is_found;
-    bool is_full;
-    bool is_leaf;
-    bool is_root;
 
     bool operator==(const btree_node_info& other) const = default;
 
@@ -107,14 +101,6 @@ public:
             {
                 info.btree_position = read_key_position;
                 info.is_found = true; // In a branch node, we always find the key or the position where it would be inserted
-            }
-
-            // if there's a key, read it
-            if (read_key_position < node.get_entry_count())
-            {
-                auto span = node.get_key_at(read_key_position);
-                info.key.resize(span.size());
-                std::copy(span.begin(), span.end(), info.key.begin());
             }
 
             result.path.push_back(info);

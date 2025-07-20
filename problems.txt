@@ -3,5 +3,3 @@
  * btree needs to know if it's writing it's first node
  * on first write, btree needs to know it's size
  * does the btree need to be passed info about where to put it's first node?
-
-
