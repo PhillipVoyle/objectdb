@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClInclude Include="..\include\btree.hpp" />
     <ClInclude Include="..\include\btree_node.hpp" />
+    <ClInclude Include="..\include\btree_row_traits.hpp" />
     <ClInclude Include="..\include\core.hpp" />
     <ClInclude Include="..\include\far_offset_ptr.hpp" />
     <ClInclude Include="..\include\binary_iterator.hpp" />
@@ -28,6 +29,7 @@
     <ClInclude Include="..\include\file_cache.hpp" />
     <ClInclude Include="..\include\file_iterator.hpp" />
     <ClInclude Include="..\include\span_iterator.hpp" />
+    <ClInclude Include="..\include\table_row_traits.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\btree.cpp" />
@@ -37,6 +39,7 @@
     <ClCompile Include="..\src\file_iterator.cpp" />
     <ClCompile Include="..\src\span_iterator.cpp" />
     <ClCompile Include="..\src\file_allocator.cpp" />
+    <ClCompile Include="..\src\table_row_traits.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
