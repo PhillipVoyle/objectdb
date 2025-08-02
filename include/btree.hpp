@@ -4,6 +4,7 @@
 #include "../include/far_offset_ptr.hpp"
 #include "../include/file_cache.hpp"
 #include "../include/file_allocator.hpp"
+#include "../include/btree_row_traits.hpp"
 
 struct btree_node_info
 {
@@ -169,15 +170,14 @@ class btree
     file_allocator& allocator_;
     far_offset_ptr offset_;
 
-    uint32_t key_size_ = 0; // Size of the keys in the B-tree
-    uint32_t value_size_ = 0; // Size of the values in the B-tree
-
     bool check_offset();
+
+    std::shared_ptr<btree_row_traits> row_traits_;
 
 public:
 
     far_offset_ptr get_offset() const { return offset_; }
-    btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator, uint32_t key_size, uint32_t value_size);
+    btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator);
 
     btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
 

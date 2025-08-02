@@ -3,6 +3,7 @@
 #include "../include/file_allocator.hpp"
 #include "../include/file_cache.hpp"
 #include "../include/span_iterator.hpp"
+#include "../include/table_row_traits.hpp"
 
 #include <iostream>
 
@@ -107,7 +108,17 @@ void main()
     uint32_t key_size = 700;
     uint32_t value_size = 30;
 
-    btree tree{ cache, initial, allocator, key_size, value_size };
+    auto row_traits_builder = std::make_shared<table_row_traits_builder>();
+
+    int key_id = row_traits_builder->add_span_field(key_size);
+    int value_id = row_traits_builder->add_span_field(value_size);
+
+    row_traits_builder->add_key_reference(key_id);
+
+    std::shared_ptr<btree_row_traits> traits = row_traits_builder->create_table_row_traits();
+
+
+    btree tree{traits, cache, initial, allocator };
 
     btree_iterator it;
     for (;;)

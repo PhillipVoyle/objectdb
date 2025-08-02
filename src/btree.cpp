@@ -3,12 +3,11 @@
 #include "../include/span_iterator.hpp"
 #include <cassert>
 
-btree::btree(file_cache& cache, far_offset_ptr offset, file_allocator& allocator, uint32_t key_size, uint32_t value_size):
+btree::btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator):
     cache_(cache),
     allocator_(allocator),
     offset_(offset),
-    key_size_(key_size),
-    value_size_(value_size)
+    row_traits_(row_traits)
 {
 }
 
