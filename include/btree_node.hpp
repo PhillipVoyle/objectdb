@@ -10,6 +10,7 @@
 #include "../include/span_iterator.hpp"
 #include "../include/btree_row_traits.hpp"
 
+class btree;
 
 class btree_node
 {
@@ -64,7 +65,13 @@ class btree_node
     metadata get_metadata();
     uint16_t get_capacity(const metadata& md);
 
+    btree& btree_;
+
 public:
+
+    btree_node(btree& bt) : btree_(bt)
+    {
+    }
 
     struct find_result
     {

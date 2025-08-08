@@ -23,7 +23,7 @@ bool btree::check_offset()
 btree_iterator btree::begin()
 {
     btree_iterator result;
-    btree_node node;
+    btree_node node(*this);
     auto current_offset = offset_;
     for (;;)
     {
@@ -70,7 +70,7 @@ btree_iterator btree::end()
 
     for (;;)
     {
-        btree_node node;
+        btree_node node(*this);
         auto iterator = cache_.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
         node.read(iterator);
         btree_node_info info;
@@ -203,7 +203,7 @@ btree_iterator btree::internal_next(btree_iterator it)
     {
         auto& info = current_path.back();
         auto node_iterator = cache_.get_iterator(info.node_offset);
-        btree_node node;
+        btree_node node(*this);
         node.read(node_iterator);
         info.is_found = true;
         info.btree_size = node.get_entry_count();
@@ -267,7 +267,7 @@ btree_iterator btree::internal_prev( btree_iterator it)
         {
             auto& info = current_path.back();
             auto it = cache_.get_iterator(info.node_offset);
-            btree_node node;
+            btree_node node(*this);
             node.read(it);
 
             auto node_size = node.get_entry_count();
@@ -318,7 +318,7 @@ std::vector<uint8_t> btree::internal_get_entry(btree_iterator it)
     }
     if (it.path.back().is_found)
     {
-        btree_node node;
+        btree_node node(*this);
         auto iterator = cache_.get_iterator(it.path.back().node_offset.get_file_id(), it.path.back().node_offset.get_offset());
         node.read(iterator);
         auto key = node.get_key_at(it.path.back().btree_position);
@@ -354,7 +354,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
     if (original.path.empty())
     {
         // this is an empty btree
-        btree_node node;
+        btree_node node(*this);
         node.init_leaf();
         node.set_transaction_id(transaction_id);
         node.set_key_size(key.size());
@@ -389,7 +389,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
 
         current_path.pop_back();
         int path_position = current_path.size();
-        btree_node node;
+        btree_node node(*this);
         auto iterator = cache_.get_iterator(
             node_info.node_offset.get_file_id(),
             node_info.node_offset.get_offset());
@@ -456,7 +456,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
             node.set_transaction_id(transaction_id);
         }
 
-        btree_node insert_node;
+        btree_node insert_node(*this);
 
         if (node.should_split())
         {
@@ -512,7 +512,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
     if (insert_needed)
     {
         // we now need a new root
-        btree_node new_root;
+        btree_node new_root(*this);
         new_root.init_root();
         new_root.set_transaction_id(transaction_id);
         new_root.set_key_size(key.size());
@@ -593,7 +593,7 @@ btree_iterator btree::internal_update(filesize_t transaction_id, btree_iterator 
         current_path.pop_back();
         int path_position = current_path.size();
 
-        btree_node node;
+        btree_node node(*this);
         auto iterator = cache_.get_iterator(offset.get_file_id(), offset.get_offset());
         node.read(iterator);
         auto find_result = node_info.get_find_result();
@@ -691,7 +691,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
         if (!node)
         {
             auto it = cache_.get_iterator(info_node.node_offset);
-            node = std::make_shared<btree_node>();
+            node = std::make_shared<btree_node>(*this);
             node->read(it);
         }
         auto node_entry_count = node->get_entry_count();
@@ -742,7 +742,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
             {
                 // locate parent node
                 auto parent_it = cache_.get_iterator(parent_info_node.node_offset);
-                parent_node = std::make_shared<btree_node>();
+                parent_node = std::make_shared<btree_node>(*this);
                 parent_node->read(parent_it);
 
 
@@ -755,7 +755,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
 
                     auto other_node_it = cache_.get_iterator(other_node_offset);
 
-                    other_node = std::make_shared<btree_node>();
+                    other_node = std::make_shared<btree_node>(*this);
                     other_node->read(other_node_it);
 
                     auto other_node_entry_count = other_node->get_entry_count();

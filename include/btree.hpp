@@ -89,7 +89,7 @@ public:
         }
 
         btree_iterator result;
-        btree_node node;
+        btree_node node(*this);
         auto current_offset = offset_;
         for (;;)
         {

@@ -18,10 +18,10 @@ void write_path(const btree_iterator& it)
     }
 }
 
-void dump_tree_node(file_cache& cache, far_offset_ptr offset, const std::string& padding = "")
+void dump_tree_node(btree& bt, file_cache& cache, far_offset_ptr offset, const std::string& padding = "")
 {
     auto iterator = cache.get_iterator(offset);
-    btree_node node;
+    btree_node node(bt);
     node.read(iterator);
 
     std::cout << padding << "-- begin node at " << offset.get_file_id() << "/" << offset.get_offset() << std::endl;
@@ -67,7 +67,7 @@ void dump_tree_node(file_cache& cache, far_offset_ptr offset, const std::string&
             far_offset_ptr sub_node_offset;
             sub_node_offset.read(it);
 
-            dump_tree_node(cache, sub_node_offset, padding + "   ");
+            dump_tree_node(bt, cache, sub_node_offset, padding + "   ");
         }
     }
 
@@ -83,7 +83,7 @@ void dump_tree(file_cache& cache, btree& tree)
     }
     else
     {
-        dump_tree_node(cache, offset);
+        dump_tree_node(tree, cache, offset);
     }
 }
 
