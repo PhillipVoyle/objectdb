@@ -50,31 +50,55 @@ struct btree_iterator
     }
 };
 
-class btree_operations
+
+class btree
 {
+    btree() = delete;
+    btree(const btree& b) = delete;
+    void operator=(const btree& b) = delete;
+    file_cache& cache_;
+    file_allocator& allocator_;
+    far_offset_ptr offset_;
+
+    bool check_offset();
+
+    std::shared_ptr<btree_row_traits> row_traits_;
+
+    btree_iterator internal_next(btree_iterator it);
+    btree_iterator internal_prev(btree_iterator it);
+
+    std::vector<uint8_t> internal_get_entry(btree_iterator it);
+
+    btree_iterator internal_insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
+    btree_iterator internal_update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
+    btree_iterator internal_remove(filesize_t transaction_id, btree_iterator it);
+
 public:
-    static btree_iterator begin(file_cache& cache, far_offset_ptr btree_offset);
-    static btree_iterator end(file_cache& cache, far_offset_ptr btree_offset);
+
+    far_offset_ptr get_offset() const { return offset_; }
+    btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator);
+
+    btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
 
     template<typename TSpanComparitor>
-    static btree_iterator seek_begin(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, TSpanComparitor comparitor)
+    btree_iterator seek_begin(std::span<uint8_t> key, TSpanComparitor comparitor) // seek to the first entry that is greater than or equal to the key
     {
-        if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
+        if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
         {
             return btree_iterator{}; // Invalid B-tree offset
         }
 
         btree_iterator result;
         btree_node node;
-        auto current_offset = btree_offset;
+        auto current_offset = offset_;
         for (;;)
         {
-            auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+            auto iterator = cache_.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
             if (!iterator.has_next())
             {
                 if (result.path.empty())
                 {
-                    result.btree_offset = btree_offset;
+                    result.btree_offset = offset_;
                     result.path.clear();
                     return result; // Empty B-tree
                 }
@@ -117,21 +141,23 @@ public:
                 current_offset.read(span_it);
             }
         }
-        result.btree_offset = btree_offset;
+        result.btree_offset = offset_;
         return result;
+
     }
+
     template<typename TSpanComparitor>
-    static btree_iterator seek_end(file_cache& cache, far_offset_ptr btree_offset, std::span<uint8_t> key, TSpanComparitor comparitor)
+    btree_iterator seek_end(std::span<uint8_t> key, TSpanComparitor comparitor) // seek to the first entry that is greater than the key
     {
-        if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
+        if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
         {
 
             btree_iterator result{}; // Invalid B-tree offset
-            result.btree_offset = btree_offset;
+            result.btree_offset = offset_;
             return result;
         }
 
-        auto it = seek_begin(cache, btree_offset, key, comparitor);
+        auto it = seek_begin(cache_, offset_, key, comparitor);
         if (it.is_end())
         {
             return it; // If the key is not found, return end iterator
@@ -140,57 +166,15 @@ public:
         if (it.path.back().is_found)
         {
             // Move to the next entry in the B-tree
-            it = next(cache, btree_offset, it);
+            it = next(cache_, offset_, it);
         }
         else {
             // If the key was not found, we return the iterator at the position where it would be inserted
             // This is already handled by seek_begin, so we just return it
         }
 
-        it.btree_offset = btree_offset;
+        it.btree_offset = offset_;
         return it;
-    }
-
-    static btree_iterator next(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it);
-    static btree_iterator prev(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it);
-
-    static std::vector<uint8_t> get_entry(file_cache& cache, btree_iterator it);
-
-    static btree_iterator insert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
-    static btree_iterator update(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
-    static btree_iterator remove(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it);
-};
-
-class btree
-{
-    btree() = delete;
-    btree(const btree& b) = delete;
-    void operator=(const btree& b) = delete;
-    file_cache& cache_;
-    file_allocator& allocator_;
-    far_offset_ptr offset_;
-
-    bool check_offset();
-
-    std::shared_ptr<btree_row_traits> row_traits_;
-
-public:
-
-    far_offset_ptr get_offset() const { return offset_; }
-    btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator);
-
-    btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
-
-    template<typename TSpanComparitor>
-    btree_iterator seek_begin(std::span<uint8_t> key, TSpanComparitor comparitor) // seek to the first entry that is greater than or equal to the key
-    {
-        return btree_operations::seek_begin<TSpanComparitor>(cache_, offset_, key, comparitor);
-    }
-
-    template<typename TSpanComparitor>
-    btree_iterator seek_end(std::span<uint8_t> key) // seek to the first entry that is greater than the key
-    {
-        return btree_operations::seek_end(cache_, offset_, key);
     }
 
     btree_iterator end(); // create an iterator that points to the end of the B-tree (not a valid entry)

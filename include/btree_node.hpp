@@ -8,6 +8,8 @@
 #include "../include/file_cache.hpp"
 #include "../include/far_offset_ptr.hpp"
 #include "../include/span_iterator.hpp"
+#include "../include/btree_row_traits.hpp"
+
 
 class btree_node
 {
@@ -61,6 +63,7 @@ class btree_node
 
     metadata get_metadata();
     uint16_t get_capacity(const metadata& md);
+
 public:
 
     struct find_result

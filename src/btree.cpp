@@ -22,77 +22,12 @@ bool btree::check_offset()
 
 btree_iterator btree::begin()
 {
-    return btree_operations::begin(cache_, offset_);
-}
-
-btree_iterator btree::end()
-{
-    return btree_operations::end(cache_, offset_);
-}
-
-btree_iterator btree::next(btree_iterator it)
-{
-    return btree_operations::next(cache_, offset_, it);
-}
-btree_iterator btree::prev(btree_iterator it)
-{
-    assert(it.btree_offset == offset_); //"Iterator must be from the same B-tree instance.";
-    return btree_operations::prev(cache_, offset_, it);
-}
-
-std::vector<uint8_t> btree::get_entry(btree_iterator it)
-{
-    return btree_operations::get_entry(cache_, it);
-}
-
-btree_iterator btree::insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
-{
-    auto result =  btree_operations::insert(transaction_id, allocator_, cache_, it, key, value);
-    if (result.path.empty())
-    {
-        throw object_db_exception("B-tree is empty or corrupted, cannot insert entry.");
-    }
-    offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
-    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
-    return result;
-
-}
-btree_iterator btree::update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
-{
-    auto result = btree_operations::update(transaction_id, allocator_, cache_, it, key, value);
-    if (result.path.empty())
-    {
-        throw object_db_exception("B-tree is empty or corrupted, cannot update entry.");
-    }
-    offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
-    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
-    return result;
-}
-btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
-{
-    auto result = btree_operations::remove(transaction_id, allocator_, cache_, it);
-
-    if (result.path.empty())
-    {
-        offset_ = far_offset_ptr();
-    }
-    else
-    {
-        offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
-    }
-
-    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
-    return result;
-}
-
-btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_offset)
-{
     btree_iterator result;
     btree_node node;
-    auto current_offset = btree_offset;
+    auto current_offset = offset_;
     for (;;)
     {
-        auto iterator = cache.get_iterator(current_offset);
+        auto iterator = cache_.get_iterator(current_offset);
         node.read(iterator);
 
         btree_node_info info;
@@ -126,17 +61,17 @@ btree_iterator btree_operations::begin(file_cache& cache, far_offset_ptr btree_o
     return result;
 }
 
-btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_offset)
+btree_iterator btree::end()
 {
     btree_iterator result;
-    result.btree_offset = btree_offset;
+    result.btree_offset = offset_;
 
-    far_offset_ptr current_offset = btree_offset;
+    far_offset_ptr current_offset = offset_;
 
     for (;;)
     {
         btree_node node;
-        auto iterator = cache.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        auto iterator = cache_.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
         node.read(iterator);
         btree_node_info info;
         info.node_offset = current_offset;
@@ -170,21 +105,76 @@ btree_iterator btree_operations::end(file_cache& cache, far_offset_ptr btree_off
     return result;
 }
 
-btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it)
+btree_iterator btree::next(btree_iterator it)
 {
-    if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
+    return internal_next(it);
+}
+btree_iterator btree::prev(btree_iterator it)
+{
+    assert(it.btree_offset == offset_); //"Iterator must be from the same B-tree instance.";
+    return internal_prev(it);
+}
+
+std::vector<uint8_t> btree::get_entry(btree_iterator it)
+{
+    return internal_get_entry(it);
+}
+
+btree_iterator btree::insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+{
+    auto result =  internal_insert(transaction_id, it, key, value);
+    if (result.path.empty())
+    {
+        throw object_db_exception("B-tree is empty or corrupted, cannot insert entry.");
+    }
+    offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
+    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
+    return result;
+
+}
+btree_iterator btree::update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+{
+    auto result = internal_update(transaction_id, it, key, value);
+    if (result.path.empty())
+    {
+        throw object_db_exception("B-tree is empty or corrupted, cannot update entry.");
+    }
+    offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
+    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
+    return result;
+}
+btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
+{
+    auto result = internal_remove(transaction_id, it);
+
+    if (result.path.empty())
+    {
+        offset_ = far_offset_ptr();
+    }
+    else
+    {
+        offset_ = result.path.front().node_offset; // Update the offset to the new root if it was created
+    }
+
+    result.btree_offset = offset_; // Ensure the btree_offset is updated to the current B-tree root
+    return result;
+}
+
+btree_iterator btree::internal_next(btree_iterator it)
+{
+    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
     {
         btree_iterator result{}; // Invalid B-tree offset
-        result.btree_offset = btree_offset;
+        result.btree_offset = offset_;
         return result;
     }
     btree_iterator result = it;
-    result.btree_offset = btree_offset;
+    result.btree_offset = offset_;
 
     // If iterator is at end, return end iterator
     if (result.is_end()) 
     {
-        return end(cache, btree_offset);
+        return end();
     }
 
     // find a node with a next
@@ -206,13 +196,13 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
     if (current_path.empty())
     {
         // If we reach here, there is no next entry (we were at the last entry)
-        return end(cache, btree_offset);
+        return end();
     }
 
     for (;;)
     {
         auto& info = current_path.back();
-        auto node_iterator = cache.get_iterator(info.node_offset);
+        auto node_iterator = cache_.get_iterator(info.node_offset);
         btree_node node;
         node.read(node_iterator);
         info.is_found = true;
@@ -238,16 +228,16 @@ btree_iterator btree_operations::next(file_cache& cache, far_offset_ptr btree_of
     result.path = current_path;
     return result;
 }
-btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_offset, btree_iterator it)
+btree_iterator btree::internal_prev( btree_iterator it)
 {
-    if (btree_offset.get_file_id() == 0 && btree_offset.get_offset() == 0)
+    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
     {
         btree_iterator result{}; // Invalid B-tree offset
-        result.btree_offset = btree_offset;
+        result.btree_offset = offset_;
         return result;
     }
     btree_iterator result = it;
-    result.btree_offset = btree_offset;
+    result.btree_offset = offset_;
 
     // find a shared root
     auto current_path = it.path;
@@ -268,7 +258,7 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
     if (current_path.empty())
     {
         //todo: is this an error? basically means there is no earlier record (or is this fine?)
-        return begin(cache, btree_offset);
+        return begin();
     }
     else
     {
@@ -276,7 +266,7 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
         for (;;)
         {
             auto& info = current_path.back();
-            auto it = cache.get_iterator(info.node_offset);
+            auto it = cache_.get_iterator(info.node_offset);
             btree_node node;
             node.read(it);
 
@@ -316,7 +306,7 @@ btree_iterator btree_operations::prev(file_cache& cache, far_offset_ptr btree_of
 }
 
 
-std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterator it)
+std::vector<uint8_t> btree::internal_get_entry(btree_iterator it)
 {
     if (it.is_end())
     {
@@ -329,7 +319,7 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
     if (it.path.back().is_found)
     {
         btree_node node;
-        auto iterator = cache.get_iterator(it.path.back().node_offset.get_file_id(), it.path.back().node_offset.get_offset());
+        auto iterator = cache_.get_iterator(it.path.back().node_offset.get_file_id(), it.path.back().node_offset.get_offset());
         node.read(iterator);
         auto key = node.get_key_at(it.path.back().btree_position);
         auto value = node.get_value_at(it.path.back().btree_position);
@@ -350,7 +340,7 @@ std::vector<uint8_t> btree_operations::get_entry(file_cache& cache, btree_iterat
 //    uint64_t btree_node::get_transaction_id();
 //    void btree_node::set_transaction_id(uint64_t transaction_id);
 
-btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
     btree_iterator original = it;
     btree_iterator result = it;
@@ -376,8 +366,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         node.insert_entry(0, new_entry);
         node.set_transaction_id(transaction_id);
-        new_or_current_node_offset = allocator.allocate_block(transaction_id);
-        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        new_or_current_node_offset = allocator_.allocate_block(transaction_id);
+        auto write_it = cache_.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
         btree_node_info info;
         info.node_offset = new_or_current_node_offset;
@@ -400,7 +390,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         current_path.pop_back();
         int path_position = current_path.size();
         btree_node node;
-        auto iterator = cache.get_iterator(
+        auto iterator = cache_.get_iterator(
             node_info.node_offset.get_file_id(),
             node_info.node_offset.get_offset());
 
@@ -462,7 +452,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         if (node.get_transaction_id() != transaction_id)
         {
-            new_or_current_node_offset = allocator.allocate_block(transaction_id);
+            new_or_current_node_offset = allocator_.allocate_block(transaction_id);
             node.set_transaction_id(transaction_id);
         }
 
@@ -480,7 +470,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
             insert_needed = false;
         }
 
-        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        auto write_it = cache_.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
         auto node_update_key_it = node.get_key_at(0);
@@ -489,9 +479,9 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
         result_btree_position = 0;
         if (insert_needed)
         {
-            auto new_node_offset = allocator.allocate_block(transaction_id);
+            auto new_node_offset = allocator_.allocate_block(transaction_id);
             insert_offset = new_node_offset;
-            auto insert_write_it = cache.get_iterator(new_node_offset.get_file_id(), new_node_offset.get_offset());
+            auto insert_write_it = cache_.get_iterator(new_node_offset.get_file_id(), new_node_offset.get_offset());
             insert_node.write(insert_write_it);
 
             auto insert_key_span = insert_node.get_key_at(0);
@@ -544,8 +534,8 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
         auto tmp = result.path;
 
-        auto new_root_offset = allocator.allocate_block(transaction_id);
-        auto new_node_iterator = cache.get_iterator(new_root_offset.get_file_id(), new_root_offset.get_offset());
+        auto new_root_offset = allocator_.allocate_block(transaction_id);
+        auto new_node_iterator = cache_.get_iterator(new_root_offset.get_file_id(), new_root_offset.get_offset());
 
         new_root.write(new_node_iterator);
 
@@ -568,7 +558,7 @@ btree_iterator btree_operations::insert(filesize_t transaction_id, file_allocato
 
     return result;
 }
-btree_iterator btree_operations::update(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
+btree_iterator btree::internal_update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value)
 {
     if (it.is_end())
     {
@@ -604,7 +594,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
         int path_position = current_path.size();
 
         btree_node node;
-        auto iterator = cache.get_iterator(offset.get_file_id(), offset.get_offset());
+        auto iterator = cache_.get_iterator(offset.get_file_id(), offset.get_offset());
         node.read(iterator);
         auto find_result = node_info.get_find_result();
 
@@ -638,7 +628,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
 
         if (node.get_transaction_id() != transaction_id)
         {
-            new_or_current_node_offset = allocator.allocate_block(transaction_id);
+            new_or_current_node_offset = allocator_.allocate_block(transaction_id);
             node.set_transaction_id(transaction_id);
         }
         else
@@ -646,7 +636,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
             new_or_current_node_offset = offset;
         }
 
-        auto write_it = cache.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
+        auto write_it = cache_.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
         auto update_span = node.get_key_at(0);
@@ -658,7 +648,7 @@ btree_iterator btree_operations::update(filesize_t transaction_id, file_allocato
     return result;
 }
 
-btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocator& allocator, file_cache& cache, btree_iterator it)
+btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator it)
 {
     if (it.is_end())
     {
@@ -700,7 +690,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
         
         if (!node)
         {
-            auto it = cache.get_iterator(info_node.node_offset);
+            auto it = cache_.get_iterator(info_node.node_offset);
             node = std::make_shared<btree_node>();
             node->read(it);
         }
@@ -751,7 +741,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
             if (node->should_merge())
             {
                 // locate parent node
-                auto parent_it = cache.get_iterator(parent_info_node.node_offset);
+                auto parent_it = cache_.get_iterator(parent_info_node.node_offset);
                 parent_node = std::make_shared<btree_node>();
                 parent_node->read(parent_it);
 
@@ -763,7 +753,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                     auto other_node_offset_it = span_iterator{ other_node_offset_span };
                     other_node_offset.read(other_node_offset_it);
 
-                    auto other_node_it = cache.get_iterator(other_node_offset);
+                    auto other_node_it = cache_.get_iterator(other_node_offset);
 
                     other_node = std::make_shared<btree_node>();
                     other_node->read(other_node_it);
@@ -799,7 +789,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
 
                         if (other_node->get_transaction_id() != transaction_id) // do we need to copy on write?
                         {
-                            other_node_offset = allocator.allocate_block(transaction_id);
+                            other_node_offset = allocator_.allocate_block(transaction_id);
                         }
 
                         std::vector<uint8_t> other_node_parent_entry(parent_node->get_entry_count() + far_offset_ptr::get_size());
@@ -809,7 +799,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
                         span_iterator spit{ other_node_parent_entry, parent_node->get_key_size()};
                         other_node_offset.write(spit);
 
-                        auto other_node_it = cache.get_iterator(other_node_offset);
+                        auto other_node_it = cache_.get_iterator(other_node_offset);
                         other_node->write(other_node_it);
                         parent_node->update_entry(other_node_position, entry0_span);
                     }
@@ -831,7 +821,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
 
         if (node->get_transaction_id() != transaction_id)
         {
-            offset = allocator.allocate_block(transaction_id);
+            offset = allocator_.allocate_block(transaction_id);
             update_needed = true;
         }
 
@@ -842,7 +832,7 @@ btree_iterator btree_operations::remove(filesize_t transaction_id, file_allocato
             update_offset = offset;
         }
 
-        auto write_it = cache.get_iterator(offset.get_file_id(), offset.get_offset());
+        auto write_it = cache_.get_iterator(offset.get_file_id(), offset.get_offset());
 
         node->write(write_it);
         result.path[path_position].node_offset = offset;
