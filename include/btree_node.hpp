@@ -156,33 +156,6 @@ public:
         return fr.found;
     }
 
-    template<typename TSpanComparitor>
-    uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace, TSpanComparitor comparitor)
-    {
-        auto metadata = get_metadata();
-        size_t pair_size = static_cast<size_t>(metadata.key_size + metadata.value_size);
-        if (entry.size() != pair_size)
-        {
-            throw object_db_exception("expected an entry of correct size");
-        }
-        std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
-        auto fr = find_key(new_key, comparitor);
-
-        if (fr.found)
-        {
-            if (!allow_replace)
-            {
-                throw object_db_exception("disallowed replace");
-            }
-            update_entry(fr.position, entry);
-        }
-        else
-        {
-            insert_entry(fr.position, entry);
-        }
-        return fr.position;
-    }
-
     template<Binary_iterator It>
     void write(It& it)
     {
