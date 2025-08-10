@@ -23,7 +23,7 @@ int btree::compare_keys(std::span<uint8_t> k1, std::span<uint8_t> k2)
 
 bool btree::check_offset()
 {
-    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    if (!offset_)
     {
         return false; // Invalid offset
     }
@@ -33,8 +33,15 @@ bool btree::check_offset()
 btree_iterator btree::begin()
 {
     btree_iterator result;
+    result.btree_offset = offset_;
+    if (!offset_)
+    {
+        return result;
+    }
+
     btree_node node(*this);
     auto current_offset = offset_;
+
     for (;;)
     {
         auto iterator = cache_.get_iterator(current_offset);
@@ -75,6 +82,11 @@ btree_iterator btree::end()
 {
     btree_iterator result;
     result.btree_offset = offset_;
+    if (!offset_)
+    {
+        return result;
+    }
+
 
     far_offset_ptr current_offset = offset_;
 
@@ -172,7 +184,7 @@ btree_iterator btree::remove(filesize_t transaction_id, btree_iterator it)
 
 btree_iterator btree::internal_next(btree_iterator it)
 {
-    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    if (!offset_)
     {
         btree_iterator result{}; // Invalid B-tree offset
         result.btree_offset = offset_;
@@ -240,7 +252,7 @@ btree_iterator btree::internal_next(btree_iterator it)
 }
 btree_iterator btree::internal_prev( btree_iterator it)
 {
-    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    if (!offset_)
     {
         btree_iterator result{}; // Invalid B-tree offset
         result.btree_offset = offset_;
@@ -808,7 +820,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
 
 btree_iterator btree::seek_begin(std::span<uint8_t> key) // seek to the first entry that is greater than or equal to the key
 {
-    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    if (!offset_)
     {
         return btree_iterator{}; // Invalid B-tree offset
     }
@@ -873,7 +885,7 @@ btree_iterator btree::seek_begin(std::span<uint8_t> key) // seek to the first en
 
 btree_iterator btree::seek_end(std::span<uint8_t> key) // seek to the first entry that is greater than the key
 {
-    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    if (!offset_)
     {
 
         btree_iterator result{}; // Invalid B-tree offset

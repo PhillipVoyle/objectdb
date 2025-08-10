@@ -30,6 +30,10 @@ public:
 
     bool operator==(const far_offset_ptr& other) const = default;
 
+    bool operator!() {
+        return file_id == 0 && offset == 0;
+    }
+
     // Copy assignment
     far_offset_ptr& operator=(const far_offset_ptr& other)
     {
