@@ -17,7 +17,7 @@ public:
 
     uint32_t get_offset();
 
-    uint32_t get_size();
+    virtual uint32_t get_size() override;
     virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span);
 };
 
@@ -48,7 +48,8 @@ public:
     std::vector<std::shared_ptr<field_data_traits>> fields_;
     entry_data_traits(const std::vector<std::shared_ptr<field_data_traits>>& fields);
     virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2);
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span);
+    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) override;
+    virtual uint32_t get_size() override;
 };
 
 class reference_data_traits : public btree_data_traits
@@ -57,8 +58,10 @@ class reference_data_traits : public btree_data_traits
     std::vector<int> field_references_;
 public:
     reference_data_traits(std::shared_ptr<entry_data_traits> entry_traits, const std::vector<int> field_references);
-    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2);
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span);
+    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) final;
+    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) final;
+
+    virtual uint32_t get_size() final;
 };
 
 class table_row_traits : public btree_row_traits

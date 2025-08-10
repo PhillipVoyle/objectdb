@@ -149,7 +149,7 @@ void main()
                 }
                 else
                 {
-                    it = tree.insert(transaction_id, it, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
+                    it = tree.insert(transaction_id, it, entry);
                 }
             }
             else if (command == "upd" || command == "update")
@@ -169,7 +169,7 @@ void main()
                 }
                 else
                 {
-                    it = tree.update(transaction_id, it, { entry.begin(), key_size }, { entry.begin() + key_size, value_size });
+                    it = tree.update(transaction_id, it, entry);
                 }
             }
             else if (command == "ups" || command == "upsert")
@@ -182,7 +182,7 @@ void main()
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), entry.begin());
                 std::copy_n(value.begin(), std::min(value_size, (uint32_t)value.size()), entry.begin() + key_size);
 
-                it = tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size }, comparitor);
+                it = tree.upsert(transaction_id, entry, comparitor);
             }
             else if (command == "sek" || command == "seek")
             {

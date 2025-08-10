@@ -2,7 +2,8 @@
 #include <algorithm>
 #include <numeric>
 
-table_row_traits::table_row_traits(std::shared_ptr<entry_data_traits> traits, std::vector<int> key_references) : entry_traits_(traits)
+table_row_traits::table_row_traits(std::shared_ptr<entry_data_traits> traits, std::vector<int> key_references)
+    : entry_traits_(traits)
 {
     std::vector<int> data_references;
     std::vector<bool> used_references(entry_traits_->fields_.size(), false);
@@ -134,8 +135,20 @@ std::vector<uint8_t> entry_data_traits::get_data(const std::span<uint8_t>& entry
     return result;
 }
 
+uint32_t entry_data_traits::get_size()
+{
+    uint32_t result = 0;
+    for (auto field : fields_)
+    {
+        auto size = (size_t)field->get_size();
+        result += size;
+    }
+    return result;
+}
+
 
 reference_data_traits::reference_data_traits(std::shared_ptr<entry_data_traits> entry_traits, const std::vector<int> field_references)
+    :entry_traits_(entry_traits), field_references_(field_references)
 {
 }
 
@@ -168,6 +181,19 @@ std::vector<uint8_t> reference_data_traits::get_data(const std::span<uint8_t>& e
 
         auto size = (size_t)field->get_size();
         std::copy_n(entry_span.begin() + field->get_offset(), size, std::back_inserter(result));
+    }
+    return result;
+}
+
+uint32_t reference_data_traits::get_size()
+{
+    uint32_t result = 0;
+    for (auto field_reference : field_references_)
+    {
+        auto field = entry_traits_->fields_[field_reference];
+
+        auto size = (size_t)field->get_size();
+        result += size;
     }
     return result;
 }

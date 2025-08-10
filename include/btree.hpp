@@ -69,9 +69,15 @@ class btree
 
     std::vector<uint8_t> internal_get_entry(btree_iterator it);
 
-    btree_iterator internal_insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
-    btree_iterator internal_update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value);
+    std::vector<uint8_t> derive_key_from_entry(std::span<uint8_t> entry);
+
+    btree_iterator internal_insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> entry);
+    btree_iterator internal_update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> entry);
     btree_iterator internal_remove(filesize_t transaction_id, btree_iterator it);
+
+    uint32_t get_key_size();
+    uint32_t get_value_size();
+    uint32_t get_entry_size();
 
 public:
 
@@ -183,23 +189,24 @@ public:
     btree_iterator prev(btree_iterator it); // move to the previous entry in the B-tree
 
     template<typename TSpanComparitor>
-    btree_iterator upsert(filesize_t transaction_id, std::span<uint8_t> key, std::span<uint8_t> value, TSpanComparitor comparitor) // insert or update an entry in the B-tree
+    btree_iterator upsert(filesize_t transaction_id, std::span<uint8_t> entry, TSpanComparitor comparitor) // insert or update an entry in the B-tree
     {
+        auto key = derive_key_from_entry(entry);
         btree_iterator it = seek_begin(key, comparitor);
         if (it.is_end() || !it.path.back().is_found)
         {
             // If the key is not found, we need to insert it
-            return insert(transaction_id, it, key, value);
+            return insert(transaction_id, it, entry);
         }
         else
         {
             // If the key is found, we can update it
-            return update(transaction_id, it, key, value);
+            return update(transaction_id, it, entry);
         }
     }
 
     std::vector<uint8_t> get_entry(btree_iterator it); // get the entry at the current iterator position
-    btree_iterator insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value); // insert an entry at the current iterator position
-    btree_iterator update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> key, std::span<uint8_t> value); // update the entry at the current iterator position
+    btree_iterator insert(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> entry); // insert an entry at the current iterator position
+    btree_iterator update(filesize_t transaction_id, btree_iterator it, std::span<uint8_t> entry); // update the entry at the current iterator position
     btree_iterator remove(filesize_t transaction_id, btree_iterator it); // remove the entry at the current iterator position
 };

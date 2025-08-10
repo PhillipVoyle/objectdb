@@ -46,6 +46,6 @@ TEST(btree_tests, test_insert_update_read_delete)
 
         write_uint32(key_span, i);
         write_uint32(value_span, i % 10);
-        tree.upsert(transaction_id, { entry.begin(), key_size }, { entry.begin() + key_size, value_size }, comparitor);
+        tree.upsert(transaction_id, entry, comparitor);
     }
 }

@@ -170,7 +170,7 @@ void btree_node::merge(btree_node& other_node)
     {
         auto entry_count = get_entry_count();
         auto entry_span = other_node.get_entry(a);
-        insert_entry(entry_count, entry_span);
+        internal_insert_entry(entry_count, entry_span);
     }
     other_node.set_entry_count(0);
 }
@@ -204,7 +204,7 @@ btree_node::metadata btree_node::get_metadata()
     return result;
 }
 
-void btree_node::insert_entry(int position, std::span<uint8_t> entry)
+void btree_node::internal_insert_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
@@ -223,7 +223,22 @@ void btree_node::insert_entry(int position, std::span<uint8_t> entry)
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
-void btree_node::update_entry(int position, std::span<uint8_t> entry)
+void btree_node::insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset)
+{
+    std::vector<uint8_t> new_entry(key.size() + far_offset_ptr::get_size());
+    std::copy(key.begin(), key.end(), new_entry.begin());
+
+    span_iterator value_it({ new_entry.begin() + key.size(), new_entry.size() - key.size() });
+    offset.write(value_it);
+    internal_insert_entry(position, new_entry);
+}
+
+void btree_node::insert_leaf_entry(int position, std::span<uint8_t> entry)
+{
+    internal_insert_entry(position, entry);
+}
+
+void btree_node::internal_update_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
@@ -231,6 +246,26 @@ void btree_node::update_entry(int position, std::span<uint8_t> entry)
 
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
+}
+
+void btree_node::update_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr reference)
+{
+    std::vector<uint8_t> new_node_entry(get_key_size() + far_offset_ptr::get_size());
+    std::copy(key.begin(), key.end(), new_node_entry.begin());
+    std::span<uint8_t> new_value_span{
+        new_node_entry.begin() + get_key_size(),
+        new_node_entry.end()
+    };
+
+    auto new_entry_span_it = span_iterator{ new_value_span };
+    reference.write(new_entry_span_it);
+
+    internal_update_entry(position, new_node_entry);
+}
+
+void btree_node::update_leaf_entry(int position, std::span<uint8_t> entry)
+{
+    internal_update_entry(position, entry);
 }
 
 void btree_node::remove_key(int position)
@@ -284,13 +319,8 @@ void btree_node::split(btree_node& overflow_node)
     uint32_t position = 0;
     for (uint32_t i = half_way; i < count; i++)
     {
-        std::vector<uint8_t> entry(md.key_size + md.value_size);
-
-        span_iterator it{ entry };
-        write_span(it, get_key_at(i));
-        write_span(it, get_value_at(i));
-
-        overflow_node.update_entry(position, entry);
+        auto entry_span = get_entry(i);
+        overflow_node.internal_update_entry(position, entry_span);
 
         position++;
     }

@@ -10,6 +10,7 @@ public:
     virtual ~btree_data_traits() = default;
     virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) = 0;
     virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) = 0;
+    virtual uint32_t get_size() = 0;
 };
 
 class btree_row_traits

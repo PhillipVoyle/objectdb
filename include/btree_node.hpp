@@ -67,6 +67,9 @@ class btree_node
 
     btree& btree_;
 
+    void internal_insert_entry(int position, std::span<uint8_t> entry);
+    void internal_update_entry(int position, std::span<uint8_t> entry);
+
 public:
 
     btree_node(btree& bt) : btree_(bt)
@@ -95,6 +98,8 @@ public:
     std::span<uint8_t> get_key_at(int n);
     std::span<uint8_t> get_value_at(int n);
     std::span<uint8_t> get_entry(int n);
+
+    far_offset_ptr get_branch_value_at(int n);
 
     uint16_t get_capacity();
 
@@ -140,8 +145,12 @@ public:
         return result;
     }
 
-    void insert_entry(int position, std::span<uint8_t> entry);
-    void update_entry(int position, std::span<uint8_t> entry);
+    void insert_leaf_entry(int position, std::span<uint8_t> entry);
+    void insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset);
+
+    void update_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset);
+    void update_leaf_entry(int position, std::span<uint8_t> entry);
+
     void remove_key(int position);
 
     template<typename TSpanComparitor>
