@@ -1,11 +1,60 @@
 #pragma once
 
 #include "../include/btree_node.hpp"
+#include "../include/btree.hpp"
 
 bool btree_node::is_leaf() const
 {
     return (data[flags_offset] & is_leaf_bit_mask) != 0;
 }
+
+btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
+{
+    auto md = get_metadata();
+    bool found = false;
+    int n = 0;
+    for (;;)
+    {
+        if (n >= md.entry_count)
+        {
+            break;
+        }
+
+        auto key_at_n = get_key_at(n);
+        int cmp = compare_keys(key, key_at_n);
+        if (cmp < 0)
+        {
+            break;
+        }
+        else if (cmp == 0)
+        {
+            found = true;
+            break;
+        }
+        n++;
+    }
+    find_result result;
+    result.position = n;
+    result.found = found;
+    return result;
+}
+
+int btree_node::compare_keys(std::span<uint8_t> key_a, std::span<uint8_t> key_b)
+{
+    return btree_.compare_keys(key_a, key_b);
+}
+
+bool btree_node::remove_key(std::span<uint8_t> key)
+{
+    auto md = get_metadata();
+    auto fr = find_key(key);
+    if (fr.found)
+    {
+        remove_key(fr.position);
+    }
+    return fr.found;
+}
+
 
 uint64_t btree_node::get_transaction_id()
 {
@@ -85,22 +134,22 @@ filesize_t btree_node::calculate_entry_count_from_buffer_size()
     return data_size / (key_size + value_size);
 }
 
-std::span<uint8_t> btree_node::get_key_at(int n)
+std::vector<uint8_t> btree_node::get_key_at(int n)
 {
-    filesize_t key_size = get_key_size();
-    filesize_t value_size = get_value_size();
+    auto entry_span = get_entry(n);
 
-    // Calculate the offset to the nth key-value pair
-    // Layout: [0] is_leaf (1 byte), [1-3] key_size (3 bytes), [4-7] value_size (4 bytes)
-    size_t header_size = get_header_size();
-    size_t pair_size = static_cast<size_t>(key_size + value_size);
-
-    size_t offset = header_size + n * pair_size;
-
-    if (offset + key_size > data.size())
-        throw std::out_of_range("Key index out of range");
-
-    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size));
+    if (is_leaf())
+    {
+        // key is in natural position
+        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span);
+    }
+    else
+    {
+        // key is stored raw
+        filesize_t key_size = get_key_size();
+        std::span<uint8_t> data_span{ entry_span.begin(), static_cast<size_t>(key_size) };
+        return std::vector<uint8_t>(data_span.begin(), data_span.end());
+    }
 }
 
 std::span<uint8_t> btree_node::get_value_at(int n)

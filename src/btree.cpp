@@ -11,6 +11,16 @@ btree::btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, fa
 {
 }
 
+std::shared_ptr<btree_row_traits> btree::get_row_traits()
+{
+    return row_traits_;
+}
+
+int btree::compare_keys(std::span<uint8_t> k1, std::span<uint8_t> k2)
+{
+    return row_traits_->get_key_traits()->compare(k1, k2);
+}
+
 bool btree::check_offset()
 {
     if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
@@ -321,13 +331,8 @@ std::vector<uint8_t> btree::internal_get_entry(btree_iterator it)
         btree_node node(*this);
         auto iterator = cache_.get_iterator(it.path.back().node_offset.get_file_id(), it.path.back().node_offset.get_offset());
         node.read(iterator);
-        auto key = node.get_key_at(it.path.back().btree_position);
-        auto value = node.get_value_at(it.path.back().btree_position);
-        std::vector<uint8_t> result;
-        result.reserve(key.size() + value.size());
-        result.insert(result.end(), key.begin(), key.end());
-        result.insert(result.end(), value.begin(), value.end());
-        return result;
+        auto entry = node.get_entry(it.path.back().btree_position);
+        return std::vector<uint8_t>(entry.begin(), entry.end());
     } else
     {
         throw object_db_exception("Entry not found in the B-tree.");
@@ -450,8 +455,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
         auto write_it = cache_.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
-        auto node_update_key_it = node.get_key_at(0);
-        update_key = std::vector<uint8_t>(node_update_key_it.begin(), node_update_key_it.end());
+        update_key = node.get_key_at(0);
 
         result_btree_position = 0;
         if (insert_needed)
@@ -461,8 +465,7 @@ btree_iterator btree::internal_insert(filesize_t transaction_id, btree_iterator 
             auto insert_write_it = cache_.get_iterator(new_node_offset.get_file_id(), new_node_offset.get_offset());
             insert_node.write(insert_write_it);
 
-            auto insert_key_span = insert_node.get_key_at(0);
-            insert_key = std::vector<uint8_t>(insert_key_span.begin(), insert_key_span.end());
+            insert_key = insert_node.get_key_at(0);
 
             auto ec = node.get_entry_count();
             if (find_result.position > ec)
@@ -598,8 +601,7 @@ btree_iterator btree::internal_update(filesize_t transaction_id, btree_iterator 
         auto write_it = cache_.get_iterator(new_or_current_node_offset.get_file_id(), new_or_current_node_offset.get_offset());
         node.write(write_it);
 
-        auto update_span = node.get_key_at(0);
-        update_key.assign(update_span.begin(), update_span.end());
+        update_key = node.get_key_at(0);
         new_or_current_node_offset = offset;
         result.path[path_position].node_offset = new_or_current_node_offset;
         expect_leaf = false;
@@ -773,8 +775,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
 
         if (node->get_entry_count() > 0)
         {
-            auto update_span = node->get_key_at(0);
-            update_key = std::vector<uint8_t>(update_span.begin(), update_span.end());
+            update_key = node->get_key_at(0);
             update_offset = offset;
         }
 
@@ -804,6 +805,118 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
 
     return it;
 }
+
+btree_iterator btree::seek_begin(std::span<uint8_t> key) // seek to the first entry that is greater than or equal to the key
+{
+    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    {
+        return btree_iterator{}; // Invalid B-tree offset
+    }
+
+    btree_iterator result;
+    btree_node node(*this);
+    auto current_offset = offset_;
+    for (;;)
+    {
+        auto iterator = cache_.get_iterator(current_offset.get_file_id(), current_offset.get_offset());
+        if (!iterator.has_next())
+        {
+            if (result.path.empty())
+            {
+                result.btree_offset = offset_;
+                result.path.clear();
+                return result; // Empty B-tree
+            }
+            else
+            {
+                throw object_db_exception("B-tree node is empty or corrupted.");
+            }
+        }
+        node.read(iterator);
+        auto find_result = node.find_key(key);
+        btree_node_info info;
+        info.node_offset = current_offset;
+        info.btree_size = node.get_entry_count();
+
+        uint16_t read_key_position = (find_result.found || find_result.position == 0)
+            ? find_result.position
+            : (find_result.position - 1);
+
+        if (node.is_leaf())
+        {
+            info.btree_position = (uint16_t)find_result.position;
+            info.is_found = find_result.found;
+        }
+        else
+        {
+            info.btree_position = read_key_position;
+            info.is_found = true; // In a branch node, we always find the key or the position where it would be inserted
+        }
+
+        result.path.push_back(info);
+
+        if (node.is_leaf())
+        {
+            break;
+        }
+        else
+        {
+            auto offset_span = node.get_value_at(read_key_position);
+            auto span_it = span_iterator(offset_span);
+            current_offset.read(span_it);
+        }
+    }
+    result.btree_offset = offset_;
+    return result;
+
+}
+
+btree_iterator btree::seek_end(std::span<uint8_t> key) // seek to the first entry that is greater than the key
+{
+    if (offset_.get_file_id() == 0 && offset_.get_offset() == 0)
+    {
+
+        btree_iterator result{}; // Invalid B-tree offset
+        result.btree_offset = offset_;
+        return result;
+    }
+
+    auto it = seek_begin(key);
+    if (it.is_end())
+    {
+        return it; // If the key is not found, return end iterator
+    }
+    // Move to the next entry if the key is found
+    if (it.path.back().is_found)
+    {
+        // Move to the next entry in the B-tree
+        it = next(it);
+    }
+    else {
+        // If the key was not found, we return the iterator at the position where it would be inserted
+        // This is already handled by seek_begin, so we just return it
+    }
+
+    it.btree_offset = offset_;
+    return it;
+}
+
+btree_iterator btree::upsert(filesize_t transaction_id, std::span<uint8_t> entry) // insert or update an entry in the B-tree
+{
+    auto key = derive_key_from_entry(entry);
+    btree_iterator it = seek_begin(key);
+    if (it.is_end() || !it.path.back().is_found)
+    {
+        // If the key is not found, we need to insert it
+        return insert(transaction_id, it, entry);
+    }
+    else
+    {
+        // If the key is found, we can update it
+        return update(transaction_id, it, entry);
+    }
+}
+
 
 std::vector<uint8_t> btree::derive_key_from_entry(std::span<uint8_t> entry)
 {

@@ -38,24 +38,13 @@ void dump_tree_node(btree& bt, file_cache& cache, far_offset_ptr offset, const s
 
     for (int i = 0; i < entry_count; i ++)
     {
-        auto key_span = node.get_key_at(i);
-        //std::vector<uint8_t> key_bytes{ key_span.begin(), key_span.end() };
-
-
+        auto key_vec = node.get_key_at(i);
         auto value_span = node.get_value_at(i);
-        //std::vector<uint8_t> value_bytes{ value_span.begin(), value_span.end() };
 
-        /*
-        span_iterator key_it{ key_bytes };
-        auto key = read_uint32(key_it);
-        */
-        std::string key{ key_span.begin(), key_span.end() };
+        std::string key{ key_vec.begin(), key_vec.end() };
 
         if (is_leaf)
         {
-            //span_iterator value_it{ value_bytes };
-            //auto value = read_uint32(value_it);
-
             std::string value{ value_span.begin(), value_span.end() };
             std::cout << padding << "   " << "[" << i << "]" << key << ":" << value << std::endl;
         }
@@ -90,9 +79,7 @@ void dump_tree(file_cache& cache, btree& tree)
 
 void main()
 {
-    LexicalComparitor comparitor;
-
-
+    
     if (std::filesystem::exists("test_cache"))
     {
         std::filesystem::remove_all("test_cache");
@@ -142,7 +129,7 @@ void main()
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), entry.begin());
                 std::copy_n(value.begin(), std::min(value_size, (uint32_t)value.size()), entry.begin() + key_size);
 
-                it = tree.seek_begin({ entry.begin(), key_size }, comparitor);
+                it = tree.seek_begin({ entry.begin(), key_size });
                 if (!it.path.empty() && it.path.back().is_found)
                 {
                     std::cerr << "entry already exists" << std::endl;
@@ -162,7 +149,7 @@ void main()
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), entry.begin());
                 std::copy_n(value.begin(), std::min(value_size, (uint32_t)value.size()), entry.begin() + key_size);
 
-                it = tree.seek_begin({ entry.begin(), key_size }, comparitor);
+                it = tree.seek_begin({ entry.begin(), key_size });
                 if (it.path.empty() || !it.path.back().is_found)
                 {
                     std::cerr << "no entry for key" << std::endl;
@@ -182,7 +169,7 @@ void main()
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), entry.begin());
                 std::copy_n(value.begin(), std::min(value_size, (uint32_t)value.size()), entry.begin() + key_size);
 
-                it = tree.upsert(transaction_id, entry, comparitor);
+                it = tree.upsert(transaction_id, entry);
             }
             else if (command == "sek" || command == "seek")
             {
@@ -191,7 +178,7 @@ void main()
                 ss >> key;
                 std::vector<uint8_t> blob(key_size, 0);
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), blob.begin());
-                it = tree.seek_begin(blob, comparitor);
+                it = tree.seek_begin(blob);
 
                 if (it.path.empty() || !it.path.back().is_found)
                 {
@@ -212,7 +199,7 @@ void main()
                 ss >> key;
                 std::vector<uint8_t> blob(key_size, 0);
                 std::copy_n(key.begin(), std::min(key_size, (uint32_t)key.size()), blob.begin());
-                it = tree.seek_begin(blob, comparitor);
+                it = tree.seek_begin(blob);
 
                 if (it.path.empty() || !it.path.back().is_found)
                 {

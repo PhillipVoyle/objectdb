@@ -9,7 +9,6 @@
 
 TEST(btree_tests, test_insert_update_read_delete)
 {
-    LexicalComparitor comparitor;
     if (std::filesystem::exists("test_cache"))
     {
         std::filesystem::remove_all("test_cache");
@@ -46,6 +45,6 @@ TEST(btree_tests, test_insert_update_read_delete)
 
         write_uint32(key_span, i);
         write_uint32(value_span, i % 10);
-        tree.upsert(transaction_id, entry, comparitor);
+        tree.upsert(transaction_id, entry);
     }
 }

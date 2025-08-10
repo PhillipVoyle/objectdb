@@ -70,6 +70,8 @@ class btree_node
     void internal_insert_entry(int position, std::span<uint8_t> entry);
     void internal_update_entry(int position, std::span<uint8_t> entry);
 
+    int compare_keys(const std::span<uint8_t> k1, const std::span<uint8_t> k2);
+
 public:
 
     btree_node(btree& bt) : btree_(bt)
@@ -95,7 +97,7 @@ public:
     void set_value_size(uint32_t value_size);
     filesize_t calculate_buffer_size();
     filesize_t calculate_entry_count_from_buffer_size();
-    std::span<uint8_t> get_key_at(int n);
+    std::vector<uint8_t> get_key_at(int n);
     std::span<uint8_t> get_value_at(int n);
     std::span<uint8_t> get_entry(int n);
 
@@ -113,37 +115,7 @@ public:
     void init_leaf();
     void init_root();
 
-    template<typename TSpanComparitor>
-    find_result find_key(std::span<uint8_t> key, TSpanComparitor comparitor)
-    {
-        auto md = get_metadata();
-        bool found = false;
-        int n = 0;
-        for (;;)
-        {
-            if (n >= md.entry_count)
-            {
-                break;
-            }
-
-            std::span<uint8_t> key_at_n = get_key_at(n);
-            int cmp = comparitor(key, key_at_n);
-            if (cmp < 0)
-            {
-                break;
-            }
-            else if (cmp == 0)
-            {
-                found = true;
-                break;
-            }
-            n++;
-        }
-        find_result result;
-        result.position = n;
-        result.found = found;
-        return result;
-    }
+    find_result find_key(std::span<uint8_t> key);
 
     void insert_leaf_entry(int position, std::span<uint8_t> entry);
     void insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset);
@@ -153,17 +125,7 @@ public:
 
     void remove_key(int position);
 
-    template<typename TSpanComparitor>
-    bool remove_key(std::span<uint8_t> key, TSpanComparitor comparitor)
-    {
-        auto md = get_metadata();
-        auto fr = find_key(key, comparitor);
-        if (fr.found)
-        {
-            remove_key(fr.position);
-        }
-        return fr.found;
-    }
+    bool remove_key(std::span<uint8_t> key);
 
     template<Binary_iterator It>
     void write(It& it)
