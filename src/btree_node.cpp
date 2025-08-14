@@ -152,22 +152,36 @@ std::vector<uint8_t> btree_node::get_key_at(int n)
     }
 }
 
-std::span<uint8_t> btree_node::get_value_at(int n)
+std::vector<uint8_t> btree_node::get_value_at(int n)
 {
+    auto entry_span = get_entry(n);
+    if (is_leaf())
+    {
+        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span);
+    }
+
     filesize_t key_size = get_key_size();
     filesize_t value_size = get_value_size();
 
-    size_t header_size = get_header_size();
-    size_t pair_size = static_cast<size_t>(key_size + value_size);
+    auto span = std::span<uint8_t>(entry_span.begin() + key_size, value_size);
+    return std::vector<uint8_t>(span.begin(), span.end());
+}
 
-    size_t offset = header_size + n * pair_size + key_size;
-
-    if (offset + value_size > data.size())
+far_offset_ptr btree_node::get_branch_value_at(int n)
+{
+    if (is_leaf())
     {
-        throw std::out_of_range("Value index out of range");
+        throw object_db_exception("cannot get branch value if node is a leaf");
     }
+    auto entry_span = get_entry(n);
+    filesize_t key_size = get_key_size();
+    filesize_t value_size = get_value_size();
 
-    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(value_size));
+    auto span = std::span<uint8_t>(entry_span.begin() + key_size, value_size);
+    span_iterator it{ span };
+    far_offset_ptr result;
+    result.read(it);
+    return result;
 }
 
 std::span<uint8_t> btree_node::get_entry(int n)

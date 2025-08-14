@@ -39,20 +39,20 @@ void dump_tree_node(btree& bt, file_cache& cache, far_offset_ptr offset, const s
     for (int i = 0; i < entry_count; i ++)
     {
         auto key_vec = node.get_key_at(i);
-        auto value_span = node.get_value_at(i);
+        auto value = node.get_value_at(i);
 
         std::string key{ key_vec.begin(), key_vec.end() };
+        std::string value_str{ value.begin(), value.end() };
 
         if (is_leaf)
         {
-            std::string value{ value_span.begin(), value_span.end() };
-            std::cout << padding << "   " << "[" << i << "]" << key << ":" << value << std::endl;
+            std::cout << padding << "   " << "[" << i << "]" << key << ":" << value_str << std::endl;
         }
         else
         {
             std::cout << padding << "   " << "[" << i << "]" << key << ":";
 
-            span_iterator it{ value_span };
+            span_iterator it{ value };
             far_offset_ptr sub_node_offset;
             sub_node_offset.read(it);
 

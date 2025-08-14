@@ -1,6 +1,5 @@
 
 #include "../include/btree.hpp"
-#include "../include/span_iterator.hpp"
 #include <cassert>
 
 btree::btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator):
@@ -70,9 +69,7 @@ btree_iterator btree::begin()
         }
         else
         {
-            auto val = node.get_value_at(0);
-            span_iterator value_it{ val };
-            current_offset.read(value_it);
+            current_offset = node.get_branch_value_at(0);
         }
     }
     return result;
@@ -114,9 +111,7 @@ btree_iterator btree::end()
 
             auto entry_count = node.get_entry_count();
             // Move to the rightmost child
-            auto child_offset_span = node.get_value_at(info.btree_size - 1);
-            auto it = span_iterator(child_offset_span);
-            current_offset.read(it);
+            current_offset = node.get_branch_value_at(info.btree_size - 1);
         }
         else
         {
@@ -236,10 +231,7 @@ btree_iterator btree::internal_next(btree_iterator it)
         }
         else
         {
-            auto value_span = node.get_value_at(info.btree_position);
-            auto span_it = span_iterator(value_span);
-            far_offset_ptr next_node;
-            next_node.read(span_it);
+            far_offset_ptr next_node = node.get_branch_value_at(info.btree_position);
             btree_node_info new_info;
             new_info.btree_position = 0;
             new_info.node_offset = next_node;
@@ -314,11 +306,7 @@ btree_iterator btree::internal_prev( btree_iterator it)
             }
             else
             {
-                auto value = node.get_value_at(info.btree_position);
-                span_iterator offset_it{ value };
-                far_offset_ptr new_node_offset;
-                new_node_offset.read(offset_it);
-
+                far_offset_ptr new_node_offset = node.get_branch_value_at(info.btree_position);
                 btree_node_info new_node_info;
                 new_node_info.node_offset = new_node_offset;
                 current_path.push_back(new_node_info);
@@ -672,7 +660,6 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
         auto node_removed = remove_needed;
         if (remove_needed)
         {
-
             if (node_entry_count > remove_position)
             {
                 node->remove_key(remove_position);
@@ -680,7 +667,6 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
             }
             remove_needed = false;
         }
-
 
         if (update_needed)
         {
@@ -711,12 +697,15 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
                 parent_node->read(parent_it);
 
 
-                int other_node_position = 1;
                 if (parent_node->get_entry_count() > 1)
                 {
-                    auto other_node_offset_span = parent_node->get_value_at(other_node_position);
-                    auto other_node_offset_it = span_iterator{ other_node_offset_span };
-                    other_node_offset.read(other_node_offset_it);
+                    auto other_node_position = 1;
+                    if (node_position_in_parent > 0)
+                    {
+                        other_node_position = node_position_in_parent - 1;
+                    }
+
+                    other_node_offset = parent_node->get_branch_value_at(other_node_position);
 
                     auto other_node_it = cache_.get_iterator(other_node_offset);
 
@@ -785,10 +774,26 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
             update_needed = true;
         }
 
-        if (node->get_entry_count() > 0)
+        auto node_count_after_merge = node->get_entry_count();
+        if (node_count_after_merge > 0)
         {
             update_key = node->get_key_at(0);
             update_offset = offset;
+        }
+
+        if (node_count_after_merge <= 1 && !node->is_leaf())
+        {
+            auto path = std::vector<btree_node_info>(result.path.begin() + path_position + 1, result.path.end());
+            result.path = path;
+            if (!result.path.empty())
+            {
+                result.btree_offset = result.path.front().node_offset;
+            }
+            else
+            {
+                result.btree_offset = far_offset_ptr(0, 0);
+            }
+            return result;
         }
 
         auto write_it = cache_.get_iterator(offset.get_file_id(), offset.get_offset());
@@ -815,7 +820,7 @@ btree_iterator btree::internal_remove(filesize_t transaction_id, btree_iterator 
         parent_node.reset();
     }
 
-    return it;
+    return result;
 }
 
 btree_iterator btree::seek_begin(std::span<uint8_t> key) // seek to the first entry that is greater than or equal to the key
@@ -873,9 +878,7 @@ btree_iterator btree::seek_begin(std::span<uint8_t> key) // seek to the first en
         }
         else
         {
-            auto offset_span = node.get_value_at(read_key_position);
-            auto span_it = span_iterator(offset_span);
-            current_offset.read(span_it);
+            current_offset = node.get_branch_value_at(read_key_position);
         }
     }
     result.btree_offset = offset_;

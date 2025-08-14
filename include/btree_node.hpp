@@ -98,7 +98,7 @@ public:
     filesize_t calculate_buffer_size();
     filesize_t calculate_entry_count_from_buffer_size();
     std::vector<uint8_t> get_key_at(int n);
-    std::span<uint8_t> get_value_at(int n);
+    std::vector<uint8_t> get_value_at(int n);
     std::span<uint8_t> get_entry(int n);
 
     far_offset_ptr get_branch_value_at(int n);
