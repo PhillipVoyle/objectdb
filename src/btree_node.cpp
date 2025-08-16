@@ -1,11 +1,60 @@
 #pragma once
 
 #include "../include/btree_node.hpp"
+#include "../include/btree.hpp"
 
 bool btree_node::is_leaf() const
 {
     return (data[flags_offset] & is_leaf_bit_mask) != 0;
 }
+
+btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
+{
+    auto md = get_metadata();
+    bool found = false;
+    int n = 0;
+    for (;;)
+    {
+        if (n >= md.entry_count)
+        {
+            break;
+        }
+
+        auto key_at_n = get_key_at(n);
+        int cmp = compare_keys(key, key_at_n);
+        if (cmp < 0)
+        {
+            break;
+        }
+        else if (cmp == 0)
+        {
+            found = true;
+            break;
+        }
+        n++;
+    }
+    find_result result;
+    result.position = n;
+    result.found = found;
+    return result;
+}
+
+int btree_node::compare_keys(std::span<uint8_t> key_a, std::span<uint8_t> key_b)
+{
+    return btree_.compare_keys(key_a, key_b);
+}
+
+bool btree_node::remove_key(std::span<uint8_t> key)
+{
+    auto md = get_metadata();
+    auto fr = find_key(key);
+    if (fr.found)
+    {
+        remove_key(fr.position);
+    }
+    return fr.found;
+}
+
 
 uint64_t btree_node::get_transaction_id()
 {
@@ -85,40 +134,54 @@ filesize_t btree_node::calculate_entry_count_from_buffer_size()
     return data_size / (key_size + value_size);
 }
 
-std::span<uint8_t> btree_node::get_key_at(int n)
+std::vector<uint8_t> btree_node::get_key_at(int n)
 {
-    filesize_t key_size = get_key_size();
-    filesize_t value_size = get_value_size();
+    auto entry_span = get_entry(n);
 
-    // Calculate the offset to the nth key-value pair
-    // Layout: [0] is_leaf (1 byte), [1-3] key_size (3 bytes), [4-7] value_size (4 bytes)
-    size_t header_size = get_header_size();
-    size_t pair_size = static_cast<size_t>(key_size + value_size);
-
-    size_t offset = header_size + n * pair_size;
-
-    if (offset + key_size > data.size())
-        throw std::out_of_range("Key index out of range");
-
-    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size));
+    if (is_leaf())
+    {
+        // key is in natural position
+        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span);
+    }
+    else
+    {
+        // key is stored raw
+        filesize_t key_size = get_key_size();
+        std::span<uint8_t> data_span{ entry_span.begin(), static_cast<size_t>(key_size) };
+        return std::vector<uint8_t>(data_span.begin(), data_span.end());
+    }
 }
 
-std::span<uint8_t> btree_node::get_value_at(int n)
+std::vector<uint8_t> btree_node::get_value_at(int n)
 {
+    auto entry_span = get_entry(n);
+    if (is_leaf())
+    {
+        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span);
+    }
+
     filesize_t key_size = get_key_size();
     filesize_t value_size = get_value_size();
 
-    size_t header_size = get_header_size();
-    size_t pair_size = static_cast<size_t>(key_size + value_size);
+    auto span = std::span<uint8_t>(entry_span.begin() + key_size, value_size);
+    return std::vector<uint8_t>(span.begin(), span.end());
+}
 
-    size_t offset = header_size + n * pair_size + key_size;
-
-    if (offset + value_size > data.size())
+far_offset_ptr btree_node::get_branch_value_at(int n)
+{
+    if (is_leaf())
     {
-        throw std::out_of_range("Value index out of range");
+        throw object_db_exception("cannot get branch value if node is a leaf");
     }
+    auto entry_span = get_entry(n);
+    filesize_t key_size = get_key_size();
+    filesize_t value_size = get_value_size();
 
-    return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(value_size));
+    auto span = std::span<uint8_t>(entry_span.begin() + key_size, value_size);
+    span_iterator it{ span };
+    far_offset_ptr result;
+    result.read(it);
+    return result;
 }
 
 std::span<uint8_t> btree_node::get_entry(int n)
@@ -170,7 +233,7 @@ void btree_node::merge(btree_node& other_node)
     {
         auto entry_count = get_entry_count();
         auto entry_span = other_node.get_entry(a);
-        insert_entry(entry_count, entry_span);
+        internal_insert_entry(entry_count, entry_span);
     }
     other_node.set_entry_count(0);
 }
@@ -204,7 +267,7 @@ btree_node::metadata btree_node::get_metadata()
     return result;
 }
 
-void btree_node::insert_entry(int position, std::span<uint8_t> entry)
+void btree_node::internal_insert_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
@@ -223,7 +286,22 @@ void btree_node::insert_entry(int position, std::span<uint8_t> entry)
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
-void btree_node::update_entry(int position, std::span<uint8_t> entry)
+void btree_node::insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset)
+{
+    std::vector<uint8_t> new_entry(key.size() + far_offset_ptr::get_size());
+    std::copy(key.begin(), key.end(), new_entry.begin());
+
+    span_iterator value_it({ new_entry.begin() + key.size(), new_entry.size() - key.size() });
+    offset.write(value_it);
+    internal_insert_entry(position, new_entry);
+}
+
+void btree_node::insert_leaf_entry(int position, std::span<uint8_t> entry)
+{
+    internal_insert_entry(position, entry);
+}
+
+void btree_node::internal_update_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
     size_t pair_size = static_cast<size_t>(md.key_size + md.value_size);
@@ -231,6 +309,26 @@ void btree_node::update_entry(int position, std::span<uint8_t> entry)
 
     std::span<uint8_t> destination(data.begin() + offset, pair_size);
     std::copy(entry.begin(), entry.end(), destination.begin());
+}
+
+void btree_node::update_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr reference)
+{
+    std::vector<uint8_t> new_node_entry(get_key_size() + far_offset_ptr::get_size());
+    std::copy(key.begin(), key.end(), new_node_entry.begin());
+    std::span<uint8_t> new_value_span{
+        new_node_entry.begin() + get_key_size(),
+        new_node_entry.end()
+    };
+
+    auto new_entry_span_it = span_iterator{ new_value_span };
+    reference.write(new_entry_span_it);
+
+    internal_update_entry(position, new_node_entry);
+}
+
+void btree_node::update_leaf_entry(int position, std::span<uint8_t> entry)
+{
+    internal_update_entry(position, entry);
 }
 
 void btree_node::remove_key(int position)
@@ -284,13 +382,8 @@ void btree_node::split(btree_node& overflow_node)
     uint32_t position = 0;
     for (uint32_t i = half_way; i < count; i++)
     {
-        std::vector<uint8_t> entry(md.key_size + md.value_size);
-
-        span_iterator it{ entry };
-        write_span(it, get_key_at(i));
-        write_span(it, get_value_at(i));
-
-        overflow_node.update_entry(position, entry);
+        auto entry_span = get_entry(i);
+        overflow_node.internal_update_entry(position, entry_span);
 
         position++;
     }

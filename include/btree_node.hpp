@@ -8,6 +8,9 @@
 #include "../include/file_cache.hpp"
 #include "../include/far_offset_ptr.hpp"
 #include "../include/span_iterator.hpp"
+#include "../include/btree_row_traits.hpp"
+
+class btree;
 
 class btree_node
 {
@@ -61,7 +64,19 @@ class btree_node
 
     metadata get_metadata();
     uint16_t get_capacity(const metadata& md);
+
+    btree& btree_;
+
+    void internal_insert_entry(int position, std::span<uint8_t> entry);
+    void internal_update_entry(int position, std::span<uint8_t> entry);
+
+    int compare_keys(const std::span<uint8_t> k1, const std::span<uint8_t> k2);
+
 public:
+
+    btree_node(btree& bt) : btree_(bt)
+    {
+    }
 
     struct find_result
     {
@@ -82,9 +97,11 @@ public:
     void set_value_size(uint32_t value_size);
     filesize_t calculate_buffer_size();
     filesize_t calculate_entry_count_from_buffer_size();
-    std::span<uint8_t> get_key_at(int n);
-    std::span<uint8_t> get_value_at(int n);
+    std::vector<uint8_t> get_key_at(int n);
+    std::vector<uint8_t> get_value_at(int n);
     std::span<uint8_t> get_entry(int n);
+
+    far_offset_ptr get_branch_value_at(int n);
 
     uint16_t get_capacity();
 
@@ -98,80 +115,17 @@ public:
     void init_leaf();
     void init_root();
 
-    template<typename TSpanComparitor>
-    find_result find_key(std::span<uint8_t> key, TSpanComparitor comparitor)
-    {
-        auto md = get_metadata();
-        bool found = false;
-        int n = 0;
-        for (;;)
-        {
-            if (n >= md.entry_count)
-            {
-                break;
-            }
+    find_result find_key(std::span<uint8_t> key);
 
-            std::span<uint8_t> key_at_n = get_key_at(n);
-            int cmp = comparitor(key, key_at_n);
-            if (cmp < 0)
-            {
-                break;
-            }
-            else if (cmp == 0)
-            {
-                found = true;
-                break;
-            }
-            n++;
-        }
-        find_result result;
-        result.position = n;
-        result.found = found;
-        return result;
-    }
+    void insert_leaf_entry(int position, std::span<uint8_t> entry);
+    void insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset);
 
-    void insert_entry(int position, std::span<uint8_t> entry);
-    void update_entry(int position, std::span<uint8_t> entry);
+    void update_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset);
+    void update_leaf_entry(int position, std::span<uint8_t> entry);
+
     void remove_key(int position);
 
-    template<typename TSpanComparitor>
-    bool remove_key(std::span<uint8_t> key, TSpanComparitor comparitor)
-    {
-        auto md = get_metadata();
-        auto fr = find_key(key, comparitor);
-        if (fr.found)
-        {
-            remove_key(fr.position);
-        }
-        return fr.found;
-    }
-
-    template<typename TSpanComparitor>
-    uint32_t upsert_entry(std::span<uint8_t> entry, bool allow_replace, TSpanComparitor comparitor)
-    {
-        auto metadata = get_metadata();
-        size_t pair_size = static_cast<size_t>(metadata.key_size + metadata.value_size);
-        if (entry.size() != pair_size)
-        {
-            throw object_db_exception("expected an entry of correct size");
-        }
-        std::span<uint8_t> new_key(entry.begin(), metadata.key_size);
-        auto fr = find_key(new_key, comparitor);
-
-        if (fr.found)
-        {
-            if (!allow_replace)
-            {
-                throw object_db_exception("disallowed replace");
-            }
-            update_entry(fr.position, entry);
-        }
-        else
-        {
-            insert_entry(fr.position, entry);
-        }
-        return fr.position;
-    }
+    bool remove_key(std::span<uint8_t> key);
 
     template<Binary_iterator It>
     void write(It& it)
