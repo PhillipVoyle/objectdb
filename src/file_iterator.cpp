@@ -18,6 +18,15 @@ uint8_t file_iterator::read()
     uint8_t data = file_cache_->read(file_id_, offset);
     return data;
 }
+
+void file_iterator::read_bytes(std::span<uint8_t>& bytes)
+{
+    auto offset = offset_;
+    offset_ += bytes.size();
+    file_cache_->read_bytes(file_id_, offset, bytes);
+}
+
+
 bool file_iterator::has_next() const
 {
     if (!file_cache_) {
@@ -30,4 +39,11 @@ void file_iterator::write(uint8_t data)
 {
     auto offset = offset_++;
     file_cache_->write(file_id_, offset, data);
+}
+
+void file_iterator::write_bytes(std::span<const uint8_t> bytes)
+{
+    auto offset = offset_;
+    offset_ += bytes.size();
+    file_cache_->write_bytes(file_id_, offset, bytes);
 }
