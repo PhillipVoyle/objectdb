@@ -12,7 +12,9 @@ class file_iterator
 public:
     file_iterator(file_cache* cache = nullptr, filesize_t file_id = 0, filesize_t offset = 0);
     uint8_t read();
+    void read_bytes(std::span<uint8_t>& span);
     void write(uint8_t data);
+    void write_bytes(std::span<const uint8_t> span);
     bool has_next() const;
 };
 

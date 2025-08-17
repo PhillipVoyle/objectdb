@@ -13,6 +13,13 @@ concept Binary_iterator
     { t.has_next() } -> std::convertible_to<bool>;
 };
 
+template<typename T>
+concept Bytes_iterator
+= requires(T t, std::span<const uint8_t> s, std::span<uint8_t>& sr) {
+    { t.read_bytes(sr) } -> std::same_as<void>;
+    { t.write_bytes(s) } -> std::same_as<void>;
+};
+
 // Write a uint8_t to the iterator
 template<Binary_iterator It>
 void write_uint8(It& it, uint8_t value) {
@@ -88,12 +95,20 @@ void write_string(It& it, const std::string& str)
 }
 
 // Write a span of uint8_t to the iterator
-template<Binary_iterator It>
+template<typename It>
+requires Binary_iterator<It> && (!Bytes_iterator<It>)
 void write_span(It& it, std::span<const uint8_t> data) {
     for (uint8_t b : data) {
         it.write(b);
     }
 }
+
+// Write a span of uint8_t to the iterator (iterator prefers block writes)
+template<Bytes_iterator It>
+void write_span(It& it, std::span<const uint8_t> data) {
+    it.write_bytes(data);
+}
+
 
 // Read a uint8_t from the iterator
 template<Binary_iterator It>
@@ -154,11 +169,17 @@ int64_t read_int64(It& it) {
 }
 
 // Read a span of uint8_t from the iterator
-template<Binary_iterator It>
+template<typename It>
+requires Binary_iterator<It> && (!Bytes_iterator<It>)
 void read_span(It& it, std::span<uint8_t> data) {
     for (auto& b : data) {
         b = it.read();
     }
+}
+
+template<Bytes_iterator It>
+void read_span(It& it, std::span<uint8_t> data) {
+    it.read_bytes(data);
 }
 
 // Write a filesize_t (uint64_t) to the iterator (big-endian)
