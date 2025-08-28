@@ -3,13 +3,16 @@
 #include <memory>
 
 #include "../include/core.hpp"
+#include "../include/far_offset_ptr.hpp"
+#include "../include/heap.hpp"
 
 class btree_data_traits
 {
 public:
     virtual ~btree_data_traits() = default;
-    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) = 0;
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) = 0;
+    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h) = 0;
+    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span, heap* h) = 0;
+    //virtual void set_data(const std::span<uint8_t>& entry_span, heap* h);
     virtual uint32_t get_size() = 0;
 };
 

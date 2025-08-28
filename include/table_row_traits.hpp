@@ -17,29 +17,29 @@ public:
 
     uint32_t get_offset();
 
-    virtual uint32_t get_size() override;
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span);
+    uint32_t get_size() override;
+    std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span, heap* h) override;
 };
 
 class int32_field : public field_data_traits
 {
 public:
     int32_field(uint32_t offset);
-    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) override;
+    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h) override;
 };
 
 class uint32_field : public field_data_traits
 {
 public:
     uint32_field(uint32_t offset);
-    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) override;
+    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h) override;
 };
 
 class span_field : public field_data_traits
 {
 public:
     span_field(uint32_t offset, uint32_t size);
-    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) override;
+    int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h) override;
 };
 
 class entry_data_traits : public btree_data_traits
@@ -47,8 +47,8 @@ class entry_data_traits : public btree_data_traits
 public:
     std::vector<std::shared_ptr<field_data_traits>> fields_;
     entry_data_traits(const std::vector<std::shared_ptr<field_data_traits>>& fields);
-    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2);
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) override;
+    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h);
+    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span, heap* h) override;
     virtual uint32_t get_size() override;
 };
 
@@ -58,8 +58,8 @@ class reference_data_traits : public btree_data_traits
     std::vector<int> field_references_;
 public:
     reference_data_traits(std::shared_ptr<entry_data_traits> entry_traits, const std::vector<int> field_references);
-    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2) final;
-    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span) final;
+    virtual int compare(const std::span<uint8_t>& p1, const std::span<uint8_t>& p2, heap* h) final;
+    virtual std::vector<uint8_t> get_data(const std::span<uint8_t>& entry_span, heap* h) final;
 
     virtual uint32_t get_size() final;
 };
