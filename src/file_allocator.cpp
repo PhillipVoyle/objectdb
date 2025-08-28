@@ -10,6 +10,8 @@ file_allocator::file_allocator(file_cache& cache) : cache_(cache)
 {
 }
 
+file_cache& file_allocator::get_cache() { return cache_; }
+
 filesize_t file_allocator::get_current_transaction_id()
 {
     filesize_t transaction_id = 0;
