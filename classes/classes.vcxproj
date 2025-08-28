@@ -27,7 +27,9 @@
     <ClInclude Include="..\include\binary_iterator.hpp" />
     <ClInclude Include="..\include\file_allocator.hpp" />
     <ClInclude Include="..\include\file_cache.hpp" />
+    <ClInclude Include="..\include\file_cache_heap.hpp" />
     <ClInclude Include="..\include\file_iterator.hpp" />
+    <ClInclude Include="..\include\heap.hpp" />
     <ClInclude Include="..\include\span_iterator.hpp" />
     <ClInclude Include="..\include\table_row_traits.hpp" />
   </ItemGroup>
@@ -36,6 +38,7 @@
     <ClCompile Include="..\src\btree_node.cpp" />
     <ClCompile Include="..\src\core.cpp" />
     <ClCompile Include="..\src\file_cache.cpp" />
+    <ClCompile Include="..\src\file_cache_heap.cpp" />
     <ClCompile Include="..\src\file_iterator.cpp" />
     <ClCompile Include="..\src\span_iterator.cpp" />
     <ClCompile Include="..\src\file_allocator.cpp" />

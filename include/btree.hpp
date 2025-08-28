@@ -59,6 +59,7 @@ class btree
     file_cache& cache_;
     file_allocator& allocator_;
     far_offset_ptr offset_;
+    heap& heap_;
 
     bool check_offset();
 
@@ -85,8 +86,10 @@ public:
 
     int compare_keys(std::span<uint8_t> a, std::span<uint8_t> b);
 
+    heap& get_heap();
+
     far_offset_ptr get_offset() const { return offset_; }
-    btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator);
+    btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator, heap& heap);
 
     btree_iterator begin(); // Seek to the first entry in the B-tree (this could be end if the B-tree is empty)
 

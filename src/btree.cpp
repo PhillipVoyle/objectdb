@@ -2,12 +2,18 @@
 #include "../include/btree.hpp"
 #include <cassert>
 
-btree::btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator):
+btree::btree(std::shared_ptr<btree_row_traits> row_traits, file_cache& cache, far_offset_ptr offset, file_allocator& allocator, heap& h):
     cache_(cache),
     allocator_(allocator),
     offset_(offset),
-    row_traits_(row_traits)
+    row_traits_(row_traits),
+    heap_(h)
 {
+}
+
+heap& btree::get_heap()
+{
+    return heap_;
 }
 
 std::shared_ptr<btree_row_traits> btree::get_row_traits()
@@ -17,7 +23,7 @@ std::shared_ptr<btree_row_traits> btree::get_row_traits()
 
 int btree::compare_keys(std::span<uint8_t> k1, std::span<uint8_t> k2)
 {
-    return row_traits_->get_key_traits()->compare(k1, k2);
+    return row_traits_->get_key_traits()->compare(k1, k2, &heap_);
 }
 
 bool btree::check_offset()
@@ -936,7 +942,7 @@ btree_iterator btree::upsert(filesize_t transaction_id, std::span<uint8_t> entry
 std::vector<uint8_t> btree::derive_key_from_entry(std::span<uint8_t> entry)
 {
     auto key_traits = row_traits_->get_key_traits();
-    return key_traits->get_data(entry);
+    return key_traits->get_data(entry, &heap_);
 }
 
 uint32_t btree::get_value_size()

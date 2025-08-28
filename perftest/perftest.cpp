@@ -4,6 +4,7 @@
 #include "../include/file_cache.hpp"
 #include "../include/span_iterator.hpp"
 #include "../include/table_row_traits.hpp"
+#include "../include/file_cache_heap.hpp"
 
 #include <iostream>
 
@@ -18,6 +19,7 @@ void main()
     {
         file_cache cache{ "test_cache" };
         file_allocator allocator{ cache };
+        file_cache_heap heap{ allocator };
 
         auto transaction_id = allocator.create_transaction();
 
@@ -35,7 +37,7 @@ void main()
 
         std::shared_ptr<btree_row_traits> traits = row_traits_builder->create_table_row_traits();
 
-        btree tree(traits, cache, initial, allocator);
+        btree tree(traits, cache, initial, allocator, heap);
 
         std::vector<uint8_t> entry(key_size + value_size, 0);
 

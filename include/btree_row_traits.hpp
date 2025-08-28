@@ -3,7 +3,6 @@
 #include <memory>
 
 #include "../include/core.hpp"
-#include "../include/far_offset_ptr.hpp"
 #include "../include/heap.hpp"
 
 class btree_data_traits

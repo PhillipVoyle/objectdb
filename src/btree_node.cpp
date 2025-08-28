@@ -141,7 +141,7 @@ std::vector<uint8_t> btree_node::get_key_at(int n)
     if (is_leaf())
     {
         // key is in natural position
-        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span);
+        return btree_.get_row_traits()->get_key_traits()->get_data(entry_span, &btree_.get_heap());
     }
     else
     {
@@ -157,7 +157,7 @@ std::vector<uint8_t> btree_node::get_value_at(int n)
     auto entry_span = get_entry(n);
     if (is_leaf())
     {
-        return btree_.get_row_traits()->get_value_traits()->get_data(entry_span);
+        return btree_.get_row_traits()->get_value_traits()->get_data(entry_span, &btree_.get_heap());
     }
 
     filesize_t key_size = get_key_size();
