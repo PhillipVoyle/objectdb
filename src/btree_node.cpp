@@ -3,11 +3,13 @@
 #include "../include/btree_node.hpp"
 #include "../include/btree.hpp"
 
+// Returns true if this node is a leaf node (no children)
 bool btree_node::is_leaf() const
 {
     return (data[flags_offset] & is_leaf_bit_mask) != 0;
 }
 
+// Finds the position of a key in the node. Returns whether found and the position to insert/search.
 btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
 {
     auto md = get_metadata();
@@ -39,11 +41,13 @@ btree_node::find_result btree_node::find_key(std::span<uint8_t> key)
     return result;
 }
 
+// Compares two keys using the btree's key comparison logic
 int btree_node::compare_keys(std::span<uint8_t> key_a, std::span<uint8_t> key_b)
 {
     return btree_.compare_keys(key_a, key_b);
 }
 
+// Removes a key from the node if it exists. Returns true if the key was found and removed.
 bool btree_node::remove_key(std::span<uint8_t> key)
 {
     auto md = get_metadata();
@@ -55,7 +59,7 @@ bool btree_node::remove_key(std::span<uint8_t> key)
     return fr.found;
 }
 
-
+// Reads the transaction ID from the node header
 uint64_t btree_node::get_transaction_id()
 {
     std::span<uint8_t> transaction_id_span(data.begin() + transaction_id_offset, transaction_id_size);
@@ -63,6 +67,7 @@ uint64_t btree_node::get_transaction_id()
     return read_uint64(it);
 }
 
+// Sets the transaction ID in the node header
 void btree_node::set_transaction_id(uint64_t transaction_id)
 {
     std::span<uint8_t> transaction_id_span(data.begin() + transaction_id_offset, transaction_id_size);
@@ -70,6 +75,7 @@ void btree_node::set_transaction_id(uint64_t transaction_id)
     write_uint64(it, transaction_id);
 }
 
+// Gets the key size from the node header
 uint16_t btree_node::get_key_size()
 {
     std::span<uint8_t> key_size_span(data.begin() + key_size_offset, key_size_size);
@@ -77,6 +83,7 @@ uint16_t btree_node::get_key_size()
     return read_uint16(key_size_iter);
 }
 
+// Sets the key size in the node header
 void btree_node::set_key_size(uint16_t key_size)
 {
     std::span<uint8_t> key_size_span(data.begin() + key_size_offset, key_size_size);
@@ -84,6 +91,7 @@ void btree_node::set_key_size(uint16_t key_size)
     write_uint16(key_size_iter, key_size);
 }
 
+// Gets the number of entries (key-value pairs) in the node
 uint16_t btree_node::get_entry_count()
 {
     std::span<uint8_t> value_count_span(data.begin() + entry_count_offset, entry_count_size);
@@ -91,6 +99,7 @@ uint16_t btree_node::get_entry_count()
     return read_uint16(value_count_iter);
 }
 
+// Sets the number of entries in the node and resizes the data buffer accordingly
 void btree_node::set_entry_count(uint16_t value_count)
 {
     auto md = get_metadata();
@@ -101,6 +110,7 @@ void btree_node::set_entry_count(uint16_t value_count)
     data.resize(md.header_size + (value_count * (md.key_size + md.value_size)));
 }
 
+// Gets the value size from the node header
 uint32_t btree_node::get_value_size()
 {
     std::span<uint8_t> value_size_span(data.begin() + value_size_offset, value_size_size);
@@ -108,6 +118,7 @@ uint32_t btree_node::get_value_size()
     return read_uint16(value_size_iter);
 }
 
+// Sets the value size in the node header
 void btree_node::set_value_size(uint32_t value_size)
 {
     std::span<uint8_t> value_size_span(data.begin() + value_size_offset, value_size_size);
@@ -115,12 +126,14 @@ void btree_node::set_value_size(uint32_t value_size)
     write_uint16(value_size_iter, value_size);
 }
 
+// Calculates the total buffer size needed for the node (header + all entries)
 filesize_t btree_node::calculate_buffer_size()
 {
     auto md = get_metadata();
     return md.entry_count * (md.key_size + md.value_size) + md.header_size;
 }
 
+// Calculates the number of entries based on the current buffer size
 filesize_t btree_node::calculate_entry_count_from_buffer_size()
 {
     filesize_t key_size = get_key_size();
@@ -134,6 +147,7 @@ filesize_t btree_node::calculate_entry_count_from_buffer_size()
     return data_size / (key_size + value_size);
 }
 
+// Retrieves the key at the given entry index
 std::vector<uint8_t> btree_node::get_key_at(int n)
 {
     auto entry_span = get_entry(n);
@@ -145,18 +159,20 @@ std::vector<uint8_t> btree_node::get_key_at(int n)
     }
     else
     {
-        // key is stored raw
+        // In branch nodes, keys are stored raw
         filesize_t key_size = get_key_size();
         std::span<uint8_t> data_span{ entry_span.begin(), static_cast<size_t>(key_size) };
         return std::vector<uint8_t>(data_span.begin(), data_span.end());
     }
 }
 
+// Retrieves the value at the given entry index
 std::vector<uint8_t> btree_node::get_value_at(int n)
 {
     auto entry_span = get_entry(n);
     if (is_leaf())
     {
+        // In leaf nodes, values are stored using row traits
         return btree_.get_row_traits()->get_value_traits()->get_data(entry_span, &btree_.get_heap());
     }
 
@@ -167,6 +183,7 @@ std::vector<uint8_t> btree_node::get_value_at(int n)
     return std::vector<uint8_t>(span.begin(), span.end());
 }
 
+// Gets the far_offset_ptr value at the given entry index (for branch nodes)
 far_offset_ptr btree_node::get_branch_value_at(int n)
 {
     if (is_leaf())
@@ -184,13 +201,13 @@ far_offset_ptr btree_node::get_branch_value_at(int n)
     return result;
 }
 
+// Returns a span representing the nth entry (key-value pair) in the node
 std::span<uint8_t> btree_node::get_entry(int n)
 {
     filesize_t key_size = get_key_size();
     filesize_t value_size = get_value_size();
 
     // Calculate the offset to the nth key-value pair
-    // Layout: [0] is_leaf (1 byte), [1-3] key_size (3 bytes), [4-7] value_size (4 bytes)
     size_t header_size = get_header_size();
     size_t pair_size = static_cast<size_t>(key_size + value_size);
 
@@ -202,29 +219,33 @@ std::span<uint8_t> btree_node::get_entry(int n)
     return std::span<uint8_t>(data.data() + offset, static_cast<size_t>(key_size + value_size));
 }
 
-
+// Returns true if the node should be split (i.e., it exceeds the block size)
 bool btree_node::should_split()
 {
     return data.size() > block_size;
 }
 
+// Calculates the maximum number of entries that can fit in a node, given metadata
 uint16_t btree_node::get_capacity(const metadata& md)
 {
     return (block_size - md.header_size) / (md.key_size + md.value_size);
 }
 
+// Returns the capacity for this node, based on its metadata
 uint16_t btree_node::get_capacity()
 {
     auto md = get_metadata();
     return get_capacity(md);
 }
 
+// Returns true if the node should be merged (i.e., it is less than half full)
 bool btree_node::should_merge()
 {
     auto md = get_metadata();
     return get_entry_count() < (get_capacity(md) / 2);
 }
 
+// Merges another node's entries into this node, clearing the other node
 void btree_node::merge(btree_node& other_node)
 {
     auto other_entry_count = other_node.get_entry_count();
@@ -238,6 +259,7 @@ void btree_node::merge(btree_node& other_node)
     other_node.set_entry_count(0);
 }
 
+// Returns true if the node is full (cannot fit another entry)
 bool btree_node::is_full()
 {
     auto md = get_metadata();
@@ -250,6 +272,7 @@ bool btree_node::is_full()
     return false;
 }
 
+// Returns a metadata struct describing the node's layout and entry count
 btree_node::metadata btree_node::get_metadata()
 {
     auto count = get_entry_count();
@@ -267,6 +290,7 @@ btree_node::metadata btree_node::get_metadata()
     return result;
 }
 
+// Inserts an entry at the given position, shifting later entries as needed
 void btree_node::internal_insert_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
@@ -286,6 +310,7 @@ void btree_node::internal_insert_entry(int position, std::span<uint8_t> entry)
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
+// Inserts a branch (internal node) entry at the given position
 void btree_node::insert_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr offset)
 {
     std::vector<uint8_t> new_entry(key.size() + far_offset_ptr::get_size());
@@ -296,11 +321,13 @@ void btree_node::insert_branch_entry(int position, std::span<uint8_t> key, far_o
     internal_insert_entry(position, new_entry);
 }
 
+// Inserts a leaf entry at the given position
 void btree_node::insert_leaf_entry(int position, std::span<uint8_t> entry)
 {
     internal_insert_entry(position, entry);
 }
 
+// Updates an entry at the given position with new data
 void btree_node::internal_update_entry(int position, std::span<uint8_t> entry)
 {
     auto md = get_metadata();
@@ -311,6 +338,7 @@ void btree_node::internal_update_entry(int position, std::span<uint8_t> entry)
     std::copy(entry.begin(), entry.end(), destination.begin());
 }
 
+// Updates a branch entry at the given position
 void btree_node::update_branch_entry(int position, std::span<uint8_t> key, far_offset_ptr reference)
 {
     std::vector<uint8_t> new_node_entry(get_key_size() + far_offset_ptr::get_size());
@@ -326,11 +354,13 @@ void btree_node::update_branch_entry(int position, std::span<uint8_t> key, far_o
     internal_update_entry(position, new_node_entry);
 }
 
+// Updates a leaf entry at the given position
 void btree_node::update_leaf_entry(int position, std::span<uint8_t> entry)
 {
     internal_update_entry(position, entry);
 }
 
+// Removes the entry at the given position, shifting later entries forward
 void btree_node::remove_key(int position)
 {
     auto md = get_metadata();
@@ -348,6 +378,7 @@ void btree_node::remove_key(int position)
     set_entry_count(md.entry_count - 1);
 }
 
+// Initializes this node as a leaf node
 void btree_node::init_leaf()
 {
     data.resize(data_offset + get_header_size());
@@ -358,6 +389,7 @@ void btree_node::init_leaf()
     set_transaction_id(0);
 }
 
+// Initializes this node as a root (non-leaf) node
 void btree_node::init_root()
 {
     data.resize(data_offset + get_header_size());
@@ -367,6 +399,7 @@ void btree_node::init_root()
     set_transaction_id(0);
 }
 
+// Splits this node into two, moving half the entries to overflow_node
 void btree_node::split(btree_node& overflow_node)
 {
     // determine the median
