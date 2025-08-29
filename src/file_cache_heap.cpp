@@ -3,12 +3,8 @@
 #include "../include/file_cache_heap.hpp"
 #include "../include/span_iterator.hpp"
 
-constexpr size_t BLOCK_SIZE = 4096;
-constexpr size_t ENTRY_SIZE = 256;
-constexpr size_t ENTRIES_PER_BLOCK = BLOCK_SIZE / ENTRY_SIZE;
-
 file_cache_heap::file_cache_heap(file_allocator& allocator, far_offset_ptr heap_root)
-    : allocator_(allocator), heap_root_(heap_root)
+    : heap_root_(heap_root), allocator_(allocator)
 {
 }
 
@@ -27,11 +23,13 @@ far_offset_ptr file_cache_heap::heap_allocate()
             bool has_next = (i + 1 < ENTRIES_PER_BLOCK) || (i == 0);
 
             // place the far_offset_ptr at the end of the entry
-            span_iterator sit{ std::span<uint8_t>{ block_data.data() + entry_offset + ENTRY_SIZE - far_offset_ptr::get_size(), far_offset_ptr::get_size() }};
 
-            far_offset_ptr next_ptr = has_next
-                ? far_offset_ptr(block_ptr.get_file_id(), block_ptr.get_offset() + (i + 1) * ENTRY_SIZE)
-                : far_offset_ptr(0, 0);
+            if (has_next)
+            {
+                far_offset_ptr next_ptr(block_ptr.get_file_id(), block_ptr.get_offset() + (i + 1) * ENTRY_SIZE);
+                span_iterator sit{ std::span<uint8_t>{ block_data.data() + entry_offset + ENTRY_SIZE - far_offset_ptr::get_size(), far_offset_ptr::get_size() } };
+                next_ptr.write(sit); // write the next pointer
+            }
         }
 
         // Write the block to the file
@@ -60,7 +58,7 @@ far_offset_ptr file_cache_heap::heap_allocate()
 void file_cache_heap::heap_free(far_offset_ptr location)
 {
     // Read the entry at location to ensure it's valid (optional)
-    std::vector<uint8_t> entry(ENTRY_SIZE, 0)
+    std::vector<uint8_t> entry(ENTRY_SIZE, 0);
     // Write the current heap_root_ as the next pointer in this entry
     span_iterator it{ std::span<uint8_t>{ entry.data() + ENTRY_SIZE - far_offset_ptr::get_size(), far_offset_ptr::get_size() }};
     heap_root_.write(it); // write the current root as the next pointer

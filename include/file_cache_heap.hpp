@@ -8,6 +8,10 @@ class file_cache_heap : public heap
     far_offset_ptr heap_root_;
     file_allocator& allocator_;
 public:
+    static constexpr size_t BLOCK_SIZE = 4096;
+    static constexpr size_t ENTRY_SIZE = 256;
+    static constexpr size_t ENTRIES_PER_BLOCK = BLOCK_SIZE / ENTRY_SIZE;
+
     file_cache_heap(file_allocator& allocator, far_offset_ptr heap_root = far_offset_ptr());
 
     far_offset_ptr heap_allocate() override;

@@ -32,9 +32,8 @@ public:
 
 TEST_F(btree_test_fixture, test_insert_update_read_delete)
 {
-
-    file_cache cache{ "test_cache" };
-    file_allocator allocator{ cache };
+    concrete_file_cache cache{ "test_cache" };
+    concrete_file_allocator allocator{ cache };
     file_cache_heap heap{ allocator };
 
     auto transaction_id = allocator.create_transaction();
@@ -86,8 +85,8 @@ TEST_F(btree_test_fixture, test_insert_update_read_delete)
 TEST_F(btree_test_fixture, test_delete)
 {
 
-    file_cache cache{ "test_cache" };
-    file_allocator allocator{ cache };
+    concrete_file_cache cache{ "test_cache" };
+    concrete_file_allocator allocator{ cache };
     file_cache_heap heap{ allocator };
 
     auto transaction_id = allocator.create_transaction();

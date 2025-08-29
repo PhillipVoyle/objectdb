@@ -101,6 +101,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="btree_tests.cpp" />
+    <ClCompile Include="heap_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

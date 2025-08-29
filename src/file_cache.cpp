@@ -57,7 +57,7 @@ bool block_cache::exists(filesize_t filename, filesize_t offset)
 }
 
 // Helper function to close and erase the least recently used file
-void file_cache::evict_file_if_needed()
+void concrete_file_cache::evict_file_if_needed()
 {
     if (file_streams.size() > 4) {
         // Remove any file_ids from lru_file_list that are not in file_streams
@@ -77,7 +77,7 @@ void file_cache::evict_file_if_needed()
     }
 }
 
-std::fstream& file_cache::get_stream(filesize_t file_id, std::ios::openmode mode)
+std::fstream& concrete_file_cache::get_stream(filesize_t file_id, std::ios::openmode mode)
 {
     auto it = file_streams.find(file_id);
     if (it == file_streams.end()) {
@@ -117,7 +117,7 @@ std::fstream& file_cache::get_stream(filesize_t file_id, std::ios::openmode mode
     }
 }
 
-filesize_t file_cache::get_file_size(filesize_t file_id)
+filesize_t concrete_file_cache::get_file_size(filesize_t file_id)
 {
     std::fstream& file = get_stream(file_id, std::ios::binary | std::ios::in);
     if (!file.is_open()) {
@@ -130,7 +130,7 @@ filesize_t file_cache::get_file_size(filesize_t file_id)
     return size;
 }
 
-void file_cache::write(filesize_t file_id, filesize_t offset, uint8_t data)
+void concrete_file_cache::write(filesize_t file_id, filesize_t offset, uint8_t data)
 {
     auto block_offset_remainder = offset % 4096;
     auto block_offset_base = offset - block_offset_remainder;
@@ -155,7 +155,7 @@ void file_cache::write(filesize_t file_id, filesize_t offset, uint8_t data)
     file.flush();
 }
 
-uint8_t file_cache::read(filesize_t file_id, filesize_t offset)
+uint8_t concrete_file_cache::read(filesize_t file_id, filesize_t offset)
 {
     auto block_offset_remainder = offset % 4096;
     auto block_offset_base = offset - block_offset_remainder;
@@ -189,7 +189,7 @@ uint8_t file_cache::read(filesize_t file_id, filesize_t offset)
     }
 }
 
-void file_cache::write_bytes(filesize_t file_id, filesize_t offset, std::span<const uint8_t> data)
+void concrete_file_cache::write_bytes(filesize_t file_id, filesize_t offset, std::span<const uint8_t> data)
 {
     auto block_offset_remainder = offset % 4096;
     auto block_offset_base = offset - block_offset_remainder;
@@ -219,7 +219,7 @@ void file_cache::write_bytes(filesize_t file_id, filesize_t offset, std::span<co
 }
 
 //todo: see if we can improve the performance here
-void file_cache::read_bytes(filesize_t file_id, filesize_t offset, std::span<uint8_t> data)
+void concrete_file_cache::read_bytes(filesize_t file_id, filesize_t offset, std::span<uint8_t> data)
 {
     auto current_offset = offset;
     for (auto& d : data)
@@ -229,17 +229,17 @@ void file_cache::read_bytes(filesize_t file_id, filesize_t offset, std::span<uin
     }
 }
 
-std::string file_cache::get_filename(const std::filesystem::path& cache_path, filesize_t file_id)
+std::string concrete_file_cache::get_filename(const std::filesystem::path& cache_path, filesize_t file_id)
 {
     return (cache_path / ("file_" + std::to_string(file_id) + ".bin")).string();
 }
 
-file_iterator file_cache::get_iterator(const far_offset_ptr& ptr)
+file_iterator concrete_file_cache::get_iterator(const far_offset_ptr& ptr)
 {
     return file_iterator(this, ptr.get_file_id(), ptr.get_offset());
 }
 
-file_iterator file_cache::get_iterator(filesize_t file_id, filesize_t offset)
+file_iterator concrete_file_cache::get_iterator(filesize_t file_id, filesize_t offset)
 {
     return file_iterator(this, file_id, offset);
 }

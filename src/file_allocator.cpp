@@ -6,13 +6,13 @@ static const uint64_t transaction_id_offset = 0;
 static const uint64_t transaction_root_offset = transaction_id_offset + sizeof(uint64_t);
 static const uint64_t last_transaction_file = transaction_root_offset + sizeof(far_offset_ptr);
 
-file_allocator::file_allocator(file_cache& cache) : cache_(cache)
+concrete_file_allocator::concrete_file_allocator(file_cache& cache) : cache_(cache)
 {
 }
 
-file_cache& file_allocator::get_cache() { return cache_; }
+file_cache& concrete_file_allocator::get_cache() { return cache_; }
 
-filesize_t file_allocator::get_current_transaction_id()
+filesize_t concrete_file_allocator::get_current_transaction_id()
 {
     filesize_t transaction_id = 0;
     std::vector<uint8_t> node(block_size, 0);
@@ -40,7 +40,7 @@ filesize_t file_allocator::get_current_transaction_id()
     return transaction_id;
 }
 
-filesize_t file_allocator::create_transaction()
+filesize_t concrete_file_allocator::create_transaction()
 {
     auto transaction_id = get_current_transaction_id();
 
@@ -59,7 +59,7 @@ filesize_t file_allocator::create_transaction()
     return transaction_id;
 }
 
-far_offset_ptr file_allocator::allocate_block(filesize_t transaction_id)
+far_offset_ptr concrete_file_allocator::allocate_block(filesize_t transaction_id)
 {
     auto transaction_file_iterator = cache_.get_iterator(0, last_transaction_file);
     if (!transaction_file_iterator.has_next())

@@ -32,7 +32,27 @@ public:
     bool exists(filesize_t filename, filesize_t offset);
 };
 
-class file_cache  
+class file_cache
+{
+public:
+    virtual ~file_cache() = default;
+    file_cache() = default;
+    // Delete copy constructor and copy assignment operator
+    file_cache(const file_cache&) = delete;
+    file_cache& operator=(const file_cache&) = delete;
+
+    virtual filesize_t get_file_size(filesize_t file_id) = 0;
+    virtual void write(filesize_t file_id, filesize_t offset, uint8_t data) = 0;
+    virtual uint8_t read(filesize_t file_id, filesize_t offset) = 0;
+
+    virtual void write_bytes(filesize_t file_id, filesize_t offset, std::span<const uint8_t> data) = 0;
+    virtual void read_bytes(filesize_t file_id, filesize_t offset, std::span<uint8_t> data) = 0;
+
+    virtual file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0) = 0;
+    virtual file_iterator get_iterator(const far_offset_ptr& ptr) = 0;
+};
+
+class concrete_file_cache : public file_cache
 {  
     std::filesystem::path cache_path; // Use the alias 'fs::path' to resolve incomplete type error  
     std::map<filesize_t, std::fstream> file_streams; // Map to hold open file streams
@@ -46,20 +66,20 @@ class file_cache
 
 
 public:
-    file_cache(const std::filesystem::path& path) : cache_path(path) {}
-    ~file_cache() = default;
+    concrete_file_cache(const std::filesystem::path& path) : cache_path(path) {}
+    ~concrete_file_cache() = default;
 
     // Delete copy constructor and copy assignment operator
-    file_cache(const file_cache&) = delete;
-    file_cache& operator=(const file_cache&) = delete;
+    concrete_file_cache(const concrete_file_cache&) = delete;
+    concrete_file_cache& operator=(const concrete_file_cache&) = delete;
 
-    filesize_t get_file_size(filesize_t file_id);
-    void write(filesize_t file_id, filesize_t offset, uint8_t data);
-    uint8_t read(filesize_t file_id, filesize_t offset);
+    filesize_t get_file_size(filesize_t file_id) override;
+    void write(filesize_t file_id, filesize_t offset, uint8_t data) override;
+    uint8_t read(filesize_t file_id, filesize_t offset) override;
 
-    void write_bytes(filesize_t file_id, filesize_t offset, std::span<const uint8_t> data);
-    void read_bytes(filesize_t file_id, filesize_t offset, std::span<uint8_t> data);
+    void write_bytes(filesize_t file_id, filesize_t offset, std::span<const uint8_t> data) override;
+    void read_bytes(filesize_t file_id, filesize_t offset, std::span<uint8_t> data) override;
 
-    file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0);
-    file_iterator get_iterator(const far_offset_ptr& ptr);
+    file_iterator get_iterator(filesize_t file_id, filesize_t offset = 0) override;
+    file_iterator get_iterator(const far_offset_ptr& ptr) override;
 };
