@@ -55,7 +55,15 @@ public:
 class concrete_file_cache : public file_cache
 {  
     std::filesystem::path cache_path; // Use the alias 'fs::path' to resolve incomplete type error  
-    std::map<filesize_t, std::fstream> file_streams; // Map to hold open file streams
+    class stream_cache_entry
+    {
+    public:
+        std::fstream stream;
+        std::list<filesize_t>::iterator lru_iterator;
+    };
+    std::map<filesize_t, stream_cache_entry> file_streams; // Map to hold open file streams
+
+
     std::list<filesize_t> lru_file_list;
 
     block_cache blocks_ = block_cache{ 4096 };

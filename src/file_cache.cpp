@@ -42,9 +42,8 @@ std::shared_ptr<std::vector<uint8_t>> block_cache::get_block(filesize_t filename
     else
     {
         auto& entry = it->second;
-        lru_block_list_.erase(entry.lru_iterator);
 
-        lru_block_list_.push_back(tup);
+        lru_block_list_.splice(lru_block_list_.end(), lru_block_list_, entry.lru_iterator);
         entry.lru_iterator = std::prev(lru_block_list_.end());
         result = entry.block;
     }
@@ -71,7 +70,7 @@ void concrete_file_cache::evict_file_if_needed()
         while (file_streams.size() > 4 && !lru_file_list.empty()) {
             filesize_t lru_id = lru_file_list.front();
             lru_file_list.pop_front();
-            file_streams[lru_id].close();
+            file_streams[lru_id].stream.close();
             file_streams.erase(lru_id);
         }
     }
@@ -105,15 +104,17 @@ std::fstream& concrete_file_cache::get_stream(filesize_t file_id, std::ios::open
             fs.open(filename, std::ios::binary | std::ios::in | std::ios::out);
         }
 
-        file_streams[file_id] = std::move(fs);
+        auto entry = file_streams.emplace(file_id, stream_cache_entry{ std::move(fs) });
         lru_file_list.push_back(file_id);
+        entry.first->second.lru_iterator = std::prev(lru_file_list.end());
+
         evict_file_if_needed();
-        return file_streams[file_id];
+        return entry.first->second.stream;
     } else {
         // Move to back (most recently used)
-        lru_file_list.remove(file_id);
-        lru_file_list.push_back(file_id);
-        return it->second;
+        lru_file_list.splice(lru_file_list.end(), lru_file_list, it->second.lru_iterator);
+        it->second.lru_iterator = std::prev(lru_file_list.end());
+        return it->second.stream;
     }
 }
 
